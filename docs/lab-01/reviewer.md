@@ -104,30 +104,11 @@
 | Field | Detail |
 |-------|--------|
 | **PR Link** | [https://github.com/softkoi/toktickit/pull/6](https://github.com/softkoi/toktickit/pull/6) |
-| **My Review Comment** | "[Hi @softkoi , thanks for the PR! I’ve reviewed your code against the Issue 2: API health check requirements. To meet the requirement, please address these points:
-
-1. UI Text Accuracy ( Page 15 of pdf )
-The instructor requires the UI to match the mockup exactly. Please update these specific strings:
-Header: Change your title to exactly TokTickIT IT Service Desk (Ensure "TokTickIT" has no space).
-Button: Change the button text to exactly [ Check System ].
-Success Status: It must show exactly System Status: Online. (Remove any extra info like the service name in brackets).
-Error Case: Please remove all Thai text and use these exact English strings on two separate lines:
-System Status: Offline
-Unable to connect to TokTickIT API
-
-2. Loading State ( Page 5, Section 3.1 )
-Requirement: The document specifies the loading state must show the text "loading" (all lowercase).
-Fix: Ensure that while the API is fetching, the word loading is visible on the screen next to your spinner/loading indicator.
-
-3. Trigger Logic ( Page 5, Section 3.1 )
-Requirement: The spec says: "opening the frontend... must show the app name and a [Check System] button that when clicked shows the system status..."
-Issue: Currently, your code uses useEffect to fetch data automatically on page load. Please change it so the fetch only triggers when the button is clicked.
-
-4. Automated Test Logic (API-01 & UI-01)
-Backend Test (Supertest): Do not create a new const app = express() inside the test file. You must import the actual app from your server source to test the real implementation.
-Frontend Test (Vitest): Update your test to check for the actual rendered UI strings (e.g., expect(screen.getByText('System Status: Online')).toBeInTheDocument()) to prove it meets the visual contract.]" |
+| **My Review Comment** | "Hi @softkoi, thanks for the PR! I’ve reviewed your code against the Issue 2: API health check requirements. To meet the requirement, please address these points:<br><br>**1. UI Text Accuracy (Page 15 of PDF)**<br>The instructor requires the UI to match the mockup exactly. Please update these specific strings:<br>- Header: Change your title to exactly `TokTickIT IT Service Desk` (Ensure \"TokTickIT\" has no space).<br>- Button: Change the button text to exactly `[ Check System ]`.<br>- Success Status: It must show exactly `System Status: Online`. (Remove any extra info like the service name in brackets).<br>- Error Case: Please remove all Thai text and use these exact English strings on two separate lines:<br>&nbsp;&nbsp;`System Status: Offline`<br>&nbsp;&nbsp;`Unable to connect to TokTickIT API`<br><br>**2. Loading State (Page 5, Section 3.1)**<br>- Requirement: The document specifies the loading state must show the text \"loading\" (all lowercase).<br>- Fix: Ensure that while the API is fetching, the word `loading` is visible on the screen next to your spinner/loading indicator.<br><br>**3. Trigger Logic (Page 5, Section 3.1)**<br>- Requirement: The spec says: \"opening the frontend... must show the app name and a [Check System] button that when clicked shows the system status...\"<br>- Issue: Currently, your code uses useEffect to fetch data automatically on page load. Please change it so the fetch only triggers when the button is clicked.<br><br>**4. Automated Test Logic (API-01 & UI-01)**<br>- Backend Test (Supertest): Do not create a new `const app = express()` inside the test file. You must import the actual app from your server source to test the real implementation.<br>- Frontend Test (Vitest): Update your test to check for the actual rendered UI strings (e.g., `expect(screen.getByText('System Status: Online')).toBeInTheDocument()`) to prove it meets the visual contract." |
 | **Partner's Response** | "[Fixed the issues as required and PR was later approved and merged]" |
 | **Outcome** | Approved and merged |
+
+---
 
 ### PR C — [feature/3-category-seed] → lab1-staging
 
