@@ -1,4 +1,7 @@
 import { useState } from 'react';
+import { RequesterProvider, useRequester } from './context/RequesterContext';
+import { Navbar } from './components/layout/Navbar';
+import { RequesterSelector } from './pages/RequesterSelector';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
 
@@ -9,7 +12,11 @@ export interface Category {
   name: string;
 }
 
-function App() {
+function AppContent() {
+  const { currentRequester, openSelector } = useRequester();
+  const [currentView, setCurrentView] = useState<'my-tickets' | 'create-ticket' | 'health-diagnostic'>('my-tickets');
+
+  // Diagnostic states
   const [status, setStatus] = useState<SystemStatus>('idle');
   const [serviceName, setServiceName] = useState<string>('');
   const [categories, setCategories] = useState<Category[]>([]);
@@ -19,18 +26,12 @@ function App() {
     setStatus('loading');
     setErrorMessage('');
     try {
-      // 1. Fetch Health Check API
       const healthRes = await fetch(`${API_BASE}/api/health`);
-      if (!healthRes.ok) {
-        throw new Error(`Health check failed with status: ${healthRes.status}`);
-      }
+      if (!healthRes.ok) throw new Error(`Health check failed: ${healthRes.status}`);
       const healthData = await healthRes.json();
 
-      // 2. Fetch Categories API
       const categoriesRes = await fetch(`${API_BASE}/api/categories`);
-      if (!categoriesRes.ok) {
-        throw new Error(`Categories fetch failed with status: ${categoriesRes.status}`);
-      }
+      if (!categoriesRes.ok) throw new Error(`Categories fetch failed: ${categoriesRes.status}`);
       const categoriesData: Category[] = await categoriesRes.json();
 
       if (healthData.status === 'ok') {
@@ -49,94 +50,156 @@ function App() {
   };
 
   return (
-    <div className="container py-5">
-      <header className="pb-3 mb-4 border-bottom text-center">
-        <h1 className="display-5 fw-bold text-primary">TokTickIT</h1>
-        <p className="lead text-muted">IT Request &amp; Service Portal</p>
-      </header>
+    <div className="min-vh-100 d-flex flex-column" style={{ backgroundColor: 'var(--zg-bg)' }}>
+      <Navbar currentView={currentView} onNavigate={setCurrentView} />
+      <RequesterSelector />
 
-      <main>
-        <div className="p-5 mb-4 bg-light rounded-3 shadow-sm border text-center">
-          <div className="container-fluid py-2">
-            <h2 className="display-6 fw-bold mb-3 text-dark">System Health &amp; Diagnostics</h2>
-            <p className="col-md-10 col-lg-8 fs-5 text-secondary mb-4 mx-auto text-center">
-              Click below to verify the connection status of the TokTickIT backend API service and load IT request categories.
-            </p>
+      <main className="container py-4 flex-grow-1">
+        {currentView === 'my-tickets' && (
+          <div>
+            <div className="d-flex justify-content-between align-items-center mb-4">
+              <div>
+                <h2 className="h3 fw-bold mb-1" style={{ color: 'var(--zg-text-primary)' }}>My Tickets</h2>
+                <p className="text-muted mb-0">View and track all of your IT support requests.</p>
+              </div>
+              <button
+                type="button"
+                className="btn btn-zg-primary"
+                onClick={() => setCurrentView('create-ticket')}
+                data-testid="create-ticket-cta"
+              >
+                ➕ Create Ticket
+              </button>
+            </div>
 
+            <div className="zg-card p-5 text-center shadow-sm">
+              <div className="fs-1 mb-3">🎫</div>
+              <h4 className="fw-bold" style={{ color: 'var(--zg-text-primary)' }}>
+                {currentRequester ? `Welcome back, ${currentRequester.name}` : 'Development Requester Context'}
+              </h4>
+              <p className="text-muted mx-auto col-md-8 mb-4">
+                {currentRequester ? (
+                  <>
+                    You are currently acting as <strong>{currentRequester.name}</strong> ({currentRequester.department}).
+                    <br />
+                    Ticket creation and ticket listing will be implemented in subsequent issues.
+                  </>
+                ) : (
+                  'Please select a development requester to establish your session context.'
+                )}
+              </p>
+              {currentRequester ? (
+                <button
+                  type="button"
+                  className="btn btn-zg-secondary"
+                  onClick={openSelector}
+                >
+                  Switch Requester Context
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="btn btn-zg-primary"
+                  onClick={openSelector}
+                >
+                  Select Development Requester
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {currentView === 'create-ticket' && (
+          <div>
+            <div className="d-flex justify-content-between align-items-center mb-4">
+              <div>
+                <h2 className="h3 fw-bold mb-1" style={{ color: 'var(--zg-text-primary)' }}>Create IT Support Ticket</h2>
+                <p className="text-muted mb-0">Submit a new request for IT assistance.</p>
+              </div>
+              <button
+                type="button"
+                className="btn btn-zg-secondary"
+                onClick={() => setCurrentView('my-tickets')}
+              >
+                ← Back to My Tickets
+              </button>
+            </div>
+
+            <div className="zg-card p-5 text-center shadow-sm">
+              <div className="fs-1 mb-3">📝</div>
+              <h4 className="fw-bold">Create Ticket Form Foundation</h4>
+              <p className="text-muted mx-auto col-md-8">
+                The Zen Green Create Ticket form with file attachments and field validations will be implemented in Issue 3.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Hidden/Collapsible Diagnostic Section for backward compatibility & health checks */}
+        <section className="mt-5 pt-4 border-top">
+          <div className="d-flex justify-content-between align-items-center mb-3">
+            <h6 className="text-muted text-uppercase fw-bold mb-0">System Health &amp; Diagnostics</h6>
             <button
               id="check-system-btn"
-              className="btn btn-primary btn-lg px-4"
+              className="btn btn-sm btn-outline-secondary"
               type="button"
               onClick={checkSystem}
               disabled={status === 'loading'}
             >
-              {status === 'loading' ? (
-                <>
-                  <span
-                    className="spinner-border spinner-border-sm me-2"
-                    role="status"
-                    aria-hidden="true"
-                  ></span>
-                  Loading...
-                </>
-              ) : (
-                'Check System'
-              )}
+              {status === 'loading' ? 'Loading...' : 'Check System'}
             </button>
-
-            {/* Loading State */}
-            {status === 'loading' && (
-              <div className="mt-4 text-muted d-flex align-items-center justify-content-center" role="status">
-                <span className="spinner-border spinner-border-sm text-primary me-2"></span>
-                <span>Checking system health and loading categories...</span>
-              </div>
-            )}
-
-            {/* Success State (Online & Categories Loaded) */}
-            {status === 'online' && (
-              <div className="mt-4 text-start">
-                <div className="alert alert-success d-flex align-items-center shadow-sm" role="alert">
-                  <span className="fs-5 me-2">✅</span>
-                  <div data-testid="status-message">
-                    <strong>System Status: Online</strong> — Connected to {serviceName}
-                  </div>
-                </div>
-
-                <div className="card mt-4 shadow-sm border-0">
-                  <div className="card-header bg-white border-bottom py-3">
-                    <h3 className="h5 mb-0 fw-bold text-dark">Available IT Request Categories</h3>
-                  </div>
-                  <div className="card-body p-0">
-                    <ul className="list-group list-group-flush" data-testid="category-list">
-                      {categories.map((category) => (
-                        <li
-                          key={category.id}
-                          className="list-group-item d-flex justify-content-between align-items-center py-3 px-4"
-                          data-testid="category-item"
-                        >
-                          <span className="fw-medium text-dark">{category.name}</span>
-                          <span className="badge bg-secondary rounded-pill">ID: #{category.id}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Offline / Error State */}
-            {status === 'offline' && (
-              <div className="alert alert-danger mt-4 d-flex align-items-center shadow-sm text-start" role="alert">
-                <span className="fs-5 me-2">❌</span>
-                <div data-testid="status-message">
-                  <strong>System Status: Offline</strong> — {errorMessage || 'Unable to connect to TokTickIT API'}
-                </div>
-              </div>
-            )}
           </div>
-        </div>
+
+          {status === 'loading' && (
+            <div className="text-muted small" role="status">
+              <span className="spinner-border spinner-border-sm text-primary me-2"></span>
+              Checking system health and loading categories...
+            </div>
+          )}
+
+          {status === 'online' && (
+            <div className="mt-3">
+              <div className="alert alert-success py-2 shadow-sm" role="alert">
+                <div data-testid="status-message">
+                  <strong>System Status: Online</strong> — Connected to {serviceName}
+                </div>
+              </div>
+
+              <div className="card shadow-sm border-0">
+                <ul className="list-group list-group-flush" data-testid="category-list">
+                  {categories.map((category) => (
+                    <li
+                      key={category.id}
+                      className="list-group-item d-flex justify-content-between align-items-center py-2 px-3"
+                      data-testid="category-item"
+                    >
+                      <span>{category.name}</span>
+                      <span className="badge bg-secondary">ID: #{category.id}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )}
+
+          {status === 'offline' && (
+            <div className="alert alert-danger mt-3 py-2 shadow-sm" role="alert">
+              <div data-testid="status-message">
+                <strong>System Status: Offline</strong> — {errorMessage || 'Unable to connect to TokTickIT API'}
+              </div>
+            </div>
+          )}
+        </section>
       </main>
     </div>
+  );
+}
+
+function App() {
+  return (
+    <RequesterProvider>
+      <AppContent />
+    </RequesterProvider>
   );
 }
 
