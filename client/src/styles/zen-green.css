@@ -1,0 +1,236 @@
+/* ==========================================================================
+   TokTickIT - Zen Green Theme CSS Design System
+   ========================================================================== */
+
+:root {
+  --zg-primary: #006B3C;
+  --zg-primary-hover: #00522E;
+  --zg-secondary: #0B7A46;
+  --zg-secondary-hover: #086137;
+  --zg-pale: #EAF6EF;
+  --zg-pale-hover: #D8EFE1;
+  --zg-bg: #F5F7F6;
+  --zg-surface: #FFFFFF;
+  --zg-text-primary: #1A2E26;
+  --zg-text-muted: #52635B;
+  --zg-border: #D1D9D4;
+  --zg-readonly-bg: #E8EFEA;
+  --zg-error: #B91C1C;
+  --zg-error-bg: #FEE2E2;
+  --zg-warning: #D97706;
+  --zg-warning-bg: #FEF3C7;
+  --zg-success: #15803D;
+  --zg-success-bg: #DCFCE7;
+  --zg-font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+body {
+  background-color: var(--zg-bg);
+  color: var(--zg-text-primary);
+  font-family: var(--zg-font-sans);
+  margin: 0;
+  padding: 0;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Header & Navbar */
+.zg-navbar {
+  background-color: var(--zg-primary) !important;
+  color: #FFFFFF;
+  padding: 0.75rem 1.5rem;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+}
+
+.zg-navbar .navbar-brand {
+  color: #FFFFFF !important;
+  font-weight: 700;
+  font-size: 1.25rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.zg-nav-link {
+  color: rgba(255, 255, 255, 0.85) !important;
+  font-weight: 500;
+  padding: 0.5rem 0.875rem !important;
+  border-radius: 4px;
+  text-decoration: none;
+  transition: all 0.2s ease;
+}
+
+.zg-nav-link:hover {
+  color: #FFFFFF !important;
+  background-color: var(--zg-secondary);
+}
+
+.zg-nav-link.active {
+  color: #FFFFFF !important;
+  background-color: var(--zg-secondary);
+  font-weight: 600;
+}
+
+/* User Profile Badge */
+.zg-user-pill {
+  background-color: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: #FFFFFF;
+  padding: 0.375rem 0.75rem;
+  border-radius: 9999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+}
+
+.zg-user-pill-btn {
+  background: transparent;
+  border: none;
+  color: #FFFFFF;
+  font-size: 0.8125rem;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0;
+  margin-left: 0.25rem;
+}
+
+.zg-user-pill-btn:hover {
+  color: var(--zg-pale);
+}
+
+/* Card & Surfaces */
+.zg-card {
+  background-color: var(--zg-surface);
+  border: 1px solid var(--zg-border);
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+/* Buttons */
+.btn-zg-primary {
+  background-color: var(--zg-primary) !important;
+  border-color: var(--zg-primary) !important;
+  color: #FFFFFF !important;
+  font-weight: 600;
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  transition: background-color 0.15s ease-in-out;
+}
+
+.btn-zg-primary:hover:not(:disabled) {
+  background-color: var(--zg-secondary) !important;
+  border-color: var(--zg-secondary) !important;
+}
+
+.btn-zg-primary:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.btn-zg-secondary {
+  background-color: #FFFFFF !important;
+  border: 1px solid var(--zg-border) !important;
+  color: var(--zg-text-primary) !important;
+  font-weight: 500;
+  min-height: 40px;
+}
+
+.btn-zg-secondary:hover {
+  background-color: #F8FAFC !important;
+  border-color: #94A3B8 !important;
+}
+
+/* Form Controls & Read-Only */
+.zg-label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--zg-text-primary);
+  margin-bottom: 0.25rem;
+}
+
+.zg-readonly-field {
+  background-color: var(--zg-readonly-bg) !important;
+  border: 1px solid #CBD5E1 !important;
+  color: var(--zg-text-primary) !important;
+  cursor: default;
+}
+
+.zg-input {
+  min-height: 40px;
+  border-color: var(--zg-border);
+}
+
+.zg-input:focus {
+  border-color: var(--zg-secondary) !important;
+  box-shadow: 0 0 0 0.2rem rgba(11, 122, 70, 0.2) !important;
+}
+
+.zg-error-text {
+  color: var(--zg-error);
+  font-size: 0.8125rem;
+  margin-top: 0.25rem;
+  display: block;
+}
+
+.zg-input.is-invalid {
+  border-color: var(--zg-error) !important;
+}
+
+/* Callout Banners */
+.zg-callout-info {
+  background-color: var(--zg-pale);
+  border: 1px solid #C4E6D2;
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+  color: #004D2B;
+  font-size: 0.875rem;
+}
+
+.zg-callout-notice {
+  background-color: #F8FAF9;
+  border: 1px solid #E2E8F0;
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+  color: var(--zg-text-muted);
+  font-size: 0.875rem;
+}
+
+/* Badges */
+.badge-zg-priority-low {
+  background-color: #E0F2FE;
+  color: #0369A1;
+  font-weight: 600;
+}
+
+.badge-zg-priority-medium {
+  background-color: #FEF3C7;
+  color: #B45309;
+  font-weight: 600;
+}
+
+.badge-zg-priority-high, .badge-zg-priority-critical {
+  background-color: #FEE2E2;
+  color: #B91C1C;
+  font-weight: 600;
+}
+
+.badge-zg-status-new {
+  background-color: var(--zg-pale);
+  color: var(--zg-primary);
+  font-weight: 600;
+}
+
+.badge-zg-status-inprogress {
+  background-color: #FEF3C7;
+  color: #D97706;
+  font-weight: 600;
+}
+
+.badge-zg-status-resolved {
+  background-color: #DCFCE7;
+  color: #15803D;
+  font-weight: 600;
+}

@@ -3,6 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import healthRouter from './routes/health';
 import categoriesRouter from './routes/categories';
+import requestersRouter from './routes/requesters';
 
 dotenv.config();
 const app = express();
@@ -11,6 +12,7 @@ app.use(express.json());
 
 app.use('/api', healthRouter);
 app.use('/api', categoriesRouter);
+app.use('/api', requestersRouter);
 
 const PORT = process.env.PORT || 4000;
 
