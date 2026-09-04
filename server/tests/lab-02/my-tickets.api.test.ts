@@ -5,6 +5,7 @@ import app from '../../src/index';
 describe('GET /api/tickets (My Tickets List API)', () => {
   let requester1Id = 1;
   let requester2Id = 2;
+  const uniqueKeyword = `wifi-adaptor-${Date.now()}`;
 
   beforeAll(async () => {
     // Seed at least 2 tickets for requester 1 and 1 ticket for requester 2
@@ -14,7 +15,7 @@ describe('GET /api/tickets (My Tickets List API)', () => {
       .field('categoryId', 2)
       .field('relatedSystemId', 1)
       .field('requestedPriority', 'HIGH')
-      .field('summary', 'Laptop Wi-Fi adaptor disconnects')
+      .field('summary', `Laptop screen flicker ${uniqueKeyword}`)
       .field('description', 'Wi-Fi drops connection every 15 minutes reliably.');
 
     await request(app)
@@ -61,11 +62,11 @@ describe('GET /api/tickets (My Tickets List API)', () => {
 
   it('API-06: should filter tickets by search keyword matching summary or ticketNumber', async () => {
     const res = await request(app)
-      .get(`/api/tickets?requesterId=${requester1Id}&search=adaptor`);
+      .get(`/api/tickets?requesterId=${requester1Id}&search=${uniqueKeyword}`);
 
     expect(res.status).toBe(200);
     expect(res.body.data.length).toBe(1);
-    expect(res.body.data[0].summary).toContain('Wi-Fi adaptor');
+    expect(res.body.data[0].summary).toContain(uniqueKeyword);
   });
 
   it('should filter tickets by categoryId', async () => {
