@@ -1,5 +1,5 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { PrismaClient, Priority } from '@prisma/client';
+import { PrismaClient, Priority, TicketStatus } from '@prisma/client';
 import multer from 'multer';
 import { uploadAttachments } from '../utils/fileUpload';
 import { generateTicketNumber } from '../utils/ticketNumber';
@@ -47,6 +47,133 @@ const handleUpload = (req: Request, res: Response, next: NextFunction) => {
     next();
   });
 };
+
+// GET /api/tickets - Query paginated tickets with filtering, searching, and sorting
+router.get('/tickets', async (req: Request, res: Response) => {
+  try {
+    const {
+      requesterId,
+      search,
+      categoryId,
+      requestedPriority,
+      status,
+      sortBy,
+      sortOrder,
+      page,
+      pageSize,
+    } = req.query;
+
+    // 1. Mandatory requesterId check for strict data isolation (BR-04)
+    const parsedRequesterId = parseInt(requesterId as string, 10);
+    if (!requesterId || isNaN(parsedRequesterId)) {
+      return res.status(400).json({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'requesterId is required to retrieve tickets.',
+          details: [{ field: 'requesterId', message: 'Valid requesterId query parameter is mandatory.' }],
+        },
+      });
+    }
+
+    // 2. Build where filter clause
+    const where: any = {
+      requesterId: parsedRequesterId,
+    };
+
+    if (search && typeof search === 'string' && search.trim() !== '') {
+      const trimmedSearch = search.trim();
+      where.OR = [
+        { ticketNumber: { contains: trimmedSearch, mode: 'insensitive' } },
+        { summary: { contains: trimmedSearch, mode: 'insensitive' } },
+      ];
+    }
+
+    if (categoryId) {
+      const parsedCatId = parseInt(categoryId as string, 10);
+      if (!isNaN(parsedCatId)) {
+        where.categoryId = parsedCatId;
+      }
+    }
+
+    if (requestedPriority && typeof requestedPriority === 'string') {
+      const prioUpper = requestedPriority.toUpperCase() as Priority;
+      const validPriorities: Priority[] = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
+      if (validPriorities.includes(prioUpper)) {
+        where.requestedPriority = prioUpper;
+      }
+    }
+
+    if (status && typeof status === 'string') {
+      const statusUpper = status.toUpperCase() as TicketStatus;
+      const validStatuses: TicketStatus[] = ['NEW', 'OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED'];
+      if (validStatuses.includes(statusUpper)) {
+        where.status = statusUpper;
+      }
+    }
+
+    // 3. Sorting and pagination parameters
+    const validSortFields = ['createdAt', 'ticketNumber', 'summary', 'status', 'requestedPriority', 'updatedAt'];
+    const sortField = validSortFields.includes(sortBy as string) ? (sortBy as string) : 'createdAt';
+    const sortDirection: 'asc' | 'desc' = (sortOrder as string)?.toLowerCase() === 'asc' ? 'asc' : 'desc';
+
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+    const limitNum = Math.min(50, Math.max(1, parseInt(pageSize as string, 10) || 8));
+    const skip = (pageNum - 1) * limitNum;
+
+    // 4. Query database
+    const [totalItems, rawTickets] = await Promise.all([
+      prisma.ticket.count({ where }),
+      prisma.ticket.findMany({
+        where,
+        orderBy: { [sortField]: sortDirection },
+        skip,
+        take: limitNum,
+        include: {
+          category: { select: { id: true, name: true } },
+          relatedSystem: { select: { id: true, name: true } },
+          attachments: {
+            where: { isRemoved: false },
+            select: { id: true },
+          },
+        },
+      }),
+    ]);
+
+    const data = rawTickets.map((t) => ({
+      id: t.id,
+      ticketNumber: t.ticketNumber,
+      summary: t.summary,
+      requestedPriority: t.requestedPriority,
+      itPriority: t.itPriority,
+      status: t.status,
+      createdAt: t.createdAt,
+      updatedAt: t.updatedAt,
+      category: t.category,
+      relatedSystem: t.relatedSystem,
+      activeAttachmentsCount: t.attachments.length,
+    }));
+
+    const totalPages = Math.ceil(totalItems / limitNum) || 1;
+
+    res.status(200).json({
+      data,
+      pagination: {
+        page: pageNum,
+        pageSize: limitNum,
+        totalItems,
+        totalPages,
+      },
+    });
+  } catch (error) {
+    console.error('Failed to fetch tickets:', error);
+    res.status(500).json({
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: 'Failed to retrieve tickets. Please try again later.',
+      },
+    });
+  }
+});
 
 // POST /api/tickets - Create a new support ticket
 router.post('/tickets', handleUpload, async (req: Request, res: Response) => {
