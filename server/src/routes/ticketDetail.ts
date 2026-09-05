@@ -172,16 +172,24 @@ router.post('/tickets/:id/attachments', handleSingleUpload, async (req: Request,
     }
 
     const file = req.file;
-    const attachment = await prisma.attachment.create({
-      data: {
-        ticketId,
-        filename: file.filename,
-        originalName: file.originalname,
-        mimeType: file.mimetype,
-        sizeBytes: file.size,
-        isRemoved: false,
-      },
-    });
+
+    // Create attachment and bump parent Ticket updatedAt timestamp in transaction
+    const [attachment] = await prisma.$transaction([
+      prisma.attachment.create({
+        data: {
+          ticketId,
+          filename: file.filename,
+          originalName: file.originalname,
+          mimeType: file.mimetype,
+          sizeBytes: file.size,
+          isRemoved: false,
+        },
+      }),
+      prisma.ticket.update({
+        where: { id: ticketId },
+        data: { updatedAt: new Date() },
+      }),
+    ]);
 
     res.status(201).json({
       id: attachment.id,
@@ -259,9 +267,15 @@ router.get('/attachments/:id/download', async (req: Request, res: Response) => {
       });
     }
 
-    res.setHeader('Content-Disposition', `attachment; filename="${attachment.originalName}"`);
-    res.setHeader('Content-Type', attachment.mimeType);
-    res.sendFile(filePath);
+    // Use Express res.download for robust header handling, UTF-8 filenames, and streaming
+    res.download(filePath, attachment.originalName, (err) => {
+      if (err && !res.headersSent) {
+        console.error('Error sending file via download:', err);
+        res.status(500).json({
+          error: { code: 'INTERNAL_ERROR', message: 'Failed to download attachment.' },
+        });
+      }
+    });
   } catch (error) {
     console.error('Failed to download attachment:', error);
     res.status(500).json({
@@ -309,7 +323,7 @@ router.patch('/attachments/:id/remove', async (req: Request, res: Response) => {
     const attachment = await prisma.attachment.findUnique({
       where: { id: attachmentId },
       include: {
-        ticket: { select: { requesterId: true } },
+        ticket: { select: { id: true, requesterId: true } },
       },
     });
 
@@ -333,15 +347,21 @@ router.patch('/attachments/:id/remove', async (req: Request, res: Response) => {
       });
     }
 
-    // Soft-remove: set isRemoved, removedAt, removalReason (BR-07)
-    const updated = await prisma.attachment.update({
-      where: { id: attachmentId },
-      data: {
-        isRemoved: true,
-        removedAt: new Date(),
-        removalReason: removalReason.trim(),
-      },
-    });
+    // Soft-remove attachment and bump parent Ticket updatedAt timestamp in transaction (BR-07)
+    const [updated] = await prisma.$transaction([
+      prisma.attachment.update({
+        where: { id: attachmentId },
+        data: {
+          isRemoved: true,
+          removedAt: new Date(),
+          removalReason: removalReason.trim(),
+        },
+      }),
+      prisma.ticket.update({
+        where: { id: attachment.ticket.id },
+        data: { updatedAt: new Date() },
+      }),
+    ]);
 
     res.status(200).json({
       id: updated.id,

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { TicketDetail } from '../../src/pages/TicketDetail';
 import { RequesterProvider } from '../../src/context/RequesterContext';
@@ -178,6 +178,33 @@ describe('Ticket Detail & Attachment Lifecycle (UI)', () => {
     await waitFor(() => {
       expect(screen.getByTestId('attachment-limit-msg')).toBeInTheDocument();
       expect(screen.getByTestId('add-attachment-input')).toBeDisabled();
+    });
+  });
+
+  it('validates file type and size on client-side before upload in handleAddAttachment', async () => {
+    vi.spyOn(global, 'fetch').mockResolvedValueOnce(
+      new Response(JSON.stringify(mockTicketData), { status: 200 })
+    );
+
+    renderWithContext(<TicketDetail ticketId={101} onBack={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('add-attachment-input')).toBeInTheDocument();
+    });
+
+    // Upload invalid file type (.exe)
+    const invalidFile = new File(['executable binary'], 'malware.exe', {
+      type: 'application/x-msdownload',
+    });
+
+    const fileInput = screen.getByTestId('add-attachment-input');
+    fireEvent.change(fileInput, { target: { files: [invalidFile] } });
+
+    // Verify error banner is shown without making network call
+    await waitFor(() => {
+      expect(screen.getByTestId('add-attach-error')).toHaveTextContent(
+        /Invalid file type. Only JPG, PNG, WEBP, and PDF are allowed/i
+      );
     });
   });
 });

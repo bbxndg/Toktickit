@@ -113,6 +113,14 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({ ticketId, onBack }) 
     } catch { return iso; }
   };
 
+  // ── Format file size (KB / MB) ───────────────────────────────────────────
+  const formatFileSize = (bytes: number) => {
+    if (bytes >= 1024 * 1024) {
+      return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    }
+    return `${(bytes / 1024).toFixed(1)} KB`;
+  };
+
   // ── Soft Remove Handler ──────────────────────────────────────────────────
   const openRemoveModal = (att: AttachmentItem) => {
     setRemovalTarget(att);
@@ -164,15 +172,16 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({ ticketId, onBack }) 
   const handleAddAttachment = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || !e.target.files[0] || !currentRequester) return;
     const file = e.target.files[0];
-    e.target.value = '';
 
     const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
     if (!allowedTypes.includes(file.type.toLowerCase())) {
       setAddAttachError(`Invalid file type. Only JPG, PNG, WEBP, and PDF are allowed.`);
+      e.target.value = '';
       return;
     }
     if (file.size > 5 * 1024 * 1024) {
       setAddAttachError(`File "${file.name}" exceeds the 5 MB limit.`);
+      e.target.value = '';
       return;
     }
 
@@ -198,6 +207,7 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({ ticketId, onBack }) 
     } catch {
       setAddAttachError('Network error. Please try again.');
     } finally {
+      e.target.value = '';
       setAddingAttachment(false);
     }
   };
@@ -388,7 +398,7 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({ ticketId, onBack }) 
                       <div className="text-truncate">
                         <span className="fw-medium text-dark">{att.originalName}</span>
                         <small className="text-muted d-block">
-                          {(att.sizeBytes / 1024).toFixed(1)} KB · Uploaded {fmt(att.createdAt)}
+                          {formatFileSize(att.sizeBytes)} · Uploaded {fmt(att.createdAt)}
                         </small>
                       </div>
                     </div>
