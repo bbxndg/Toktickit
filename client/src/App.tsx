@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { RequesterProvider, useRequester } from './context/RequesterContext';
 import { Navbar } from './components/layout/Navbar';
 import { RequesterSelector } from './pages/RequesterSelector';
 import { CreateTicket } from './pages/CreateTicket';
 import { MyTickets } from './pages/MyTickets';
+import { TicketDetail } from './pages/TicketDetail';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
 
@@ -16,7 +17,16 @@ export interface Category {
 
 function AppContent() {
   const { currentRequester } = useRequester();
-  const [currentView, setCurrentView] = useState<'my-tickets' | 'create-ticket' | 'health-diagnostic'>('my-tickets');
+  const [currentView, setCurrentView] = useState<'my-tickets' | 'create-ticket' | 'ticket-detail' | 'health-diagnostic'>('my-tickets');
+  const [selectedTicketId, setSelectedTicketId] = useState<number | null>(null);
+
+  // If requester changes while viewing ticket detail, return to my-tickets (BR-13)
+  useEffect(() => {
+    if (currentView === 'ticket-detail') {
+      setCurrentView('my-tickets');
+      setSelectedTicketId(null);
+    }
+  }, [currentRequester]);
 
   // Diagnostic states
   const [status, setStatus] = useState<SystemStatus>('idle');
@@ -61,8 +71,8 @@ function AppContent() {
           <MyTickets
             onCreateTicket={() => setCurrentView('create-ticket')}
             onSelectTicket={(ticketId) => {
-              console.log('Selected ticket id:', ticketId);
-              // Will navigate to detail in Issue 5
+              setSelectedTicketId(ticketId);
+              setCurrentView('ticket-detail');
             }}
           />
         )}
@@ -72,6 +82,16 @@ function AppContent() {
             onCancel={() => setCurrentView('my-tickets')}
             onSuccess={(_tktNo) => {
               // Redirect back to my tickets to see newly created ticket
+              setCurrentView('my-tickets');
+            }}
+          />
+        )}
+
+        {currentView === 'ticket-detail' && selectedTicketId && (
+          <TicketDetail
+            ticketId={selectedTicketId}
+            onBack={() => {
+              setSelectedTicketId(null);
               setCurrentView('my-tickets');
             }}
           />
