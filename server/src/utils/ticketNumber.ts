@@ -11,7 +11,6 @@ export async function generateTicketNumber(
   const year = date.getFullYear();
   const prefix = `TKT-${year}-`;
 
-  // Find the ticket with highest ticket number for the current year
   const latestTicket = await prisma.ticket.findFirst({
     where: {
       ticketNumber: {
@@ -19,10 +18,11 @@ export async function generateTicketNumber(
       },
     },
     orderBy: {
-      ticketNumber: 'desc',
+      id: 'desc',
     },
     select: {
       ticketNumber: true,
+      id: true,
     },
   });
 
@@ -37,6 +37,21 @@ export async function generateTicketNumber(
     }
   }
 
-  const paddedSequence = String(nextSequence).padStart(6, '0');
-  return `${prefix}${paddedSequence}`;
+  // Ensure candidate is unique
+  let candidate = `${prefix}${String(nextSequence).padStart(6, '0')}`;
+  let exists = await prisma.ticket.findUnique({
+    where: { ticketNumber: candidate },
+    select: { id: true },
+  });
+
+  while (exists) {
+    nextSequence++;
+    candidate = `${prefix}${String(nextSequence).padStart(6, '0')}`;
+    exists = await prisma.ticket.findUnique({
+      where: { ticketNumber: candidate },
+      select: { id: true },
+    });
+  }
+
+  return candidate;
 }

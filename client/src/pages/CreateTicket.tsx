@@ -220,9 +220,8 @@ export const CreateTicket: React.FC<CreateTicketProps> = ({ onCancel, onSuccess 
         return;
       }
 
-      // Success
+      // Success - Display success card
       setSuccessTicketNumber(data.ticketNumber);
-      onSuccess(data.ticketNumber);
     } catch (err: any) {
       setServerError('Network error: Unable to connect to TokTickIT server. Your inputs have been preserved.');
     } finally {
@@ -251,7 +250,10 @@ export const CreateTicket: React.FC<CreateTicketProps> = ({ onCancel, onSuccess 
           <button
             type="button"
             className="btn btn-zg-primary px-4"
-            onClick={onCancel}
+            onClick={() => {
+              onSuccess(successTicketNumber);
+              onCancel();
+            }}
             data-testid="view-my-tickets-btn"
           >
             View in My Tickets

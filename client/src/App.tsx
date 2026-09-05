@@ -3,6 +3,7 @@ import { RequesterProvider, useRequester } from './context/RequesterContext';
 import { Navbar } from './components/layout/Navbar';
 import { RequesterSelector } from './pages/RequesterSelector';
 import { CreateTicket } from './pages/CreateTicket';
+import { MyTickets } from './pages/MyTickets';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
 
@@ -14,7 +15,7 @@ export interface Category {
 }
 
 function AppContent() {
-  const { currentRequester, openSelector } = useRequester();
+  const { currentRequester } = useRequester();
   const [currentView, setCurrentView] = useState<'my-tickets' | 'create-ticket' | 'health-diagnostic'>('my-tickets');
 
   // Diagnostic states
@@ -57,73 +58,21 @@ function AppContent() {
 
       <main className="container py-4 flex-grow-1">
         {currentView === 'my-tickets' && (
-          <div>
-            <div className="d-flex justify-content-between align-items-center mb-4">
-              <div>
-                <h2 className="h3 fw-bold mb-1" style={{ color: 'var(--zg-text-primary)' }}>My Tickets</h2>
-                <p className="text-muted mb-0">View and track all of your IT support requests.</p>
-              </div>
-              <button
-                type="button"
-                className="btn btn-zg-primary"
-                onClick={() => setCurrentView('create-ticket')}
-                data-testid="create-ticket-cta"
-              >
-                ➕ Create Ticket
-              </button>
-            </div>
-
-            <div className="zg-card p-5 text-center shadow-sm">
-              <div className="fs-1 mb-3">🎫</div>
-              <h4 className="fw-bold" style={{ color: 'var(--zg-text-primary)' }}>
-                {currentRequester ? `Welcome back, ${currentRequester.name}` : 'Development Requester Context'}
-              </h4>
-              <p className="text-muted mx-auto col-md-8 mb-4">
-                {currentRequester ? (
-                  <>
-                    You are currently acting as <strong>{currentRequester.name}</strong> ({currentRequester.department}).
-                    <br />
-                    Click <strong>Create Ticket</strong> to submit a new IT support request.
-                  </>
-                ) : (
-                  'Please select a development requester to establish your session context.'
-                )}
-              </p>
-              {currentRequester ? (
-                <div className="d-flex justify-content-center gap-3">
-                  <button
-                    type="button"
-                    className="btn btn-zg-primary"
-                    onClick={() => setCurrentView('create-ticket')}
-                  >
-                    ➕ Create IT Ticket
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-zg-secondary"
-                    onClick={openSelector}
-                  >
-                    Switch Requester Context
-                  </button>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  className="btn btn-zg-primary"
-                  onClick={openSelector}
-                >
-                  Select Development Requester
-                </button>
-              )}
-            </div>
-          </div>
+          <MyTickets
+            onCreateTicket={() => setCurrentView('create-ticket')}
+            onSelectTicket={(ticketId) => {
+              console.log('Selected ticket id:', ticketId);
+              // Will navigate to detail in Issue 5
+            }}
+          />
         )}
 
         {currentView === 'create-ticket' && (
           <CreateTicket
             onCancel={() => setCurrentView('my-tickets')}
             onSuccess={(_tktNo) => {
-              // Could navigate to detail or my-tickets
+              // Redirect back to my tickets to see newly created ticket
+              setCurrentView('my-tickets');
             }}
           />
         )}
