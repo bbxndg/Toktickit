@@ -255,4 +255,53 @@ describe('My Tickets Screen (List Mode)', () => {
       expect(screen.getByTestId('no-results-clear-btn')).toBeInTheDocument();
     });
   });
+
+  it('resets all filters and reloads tickets when Clear Filters button is clicked', async () => {
+    setupFetchMock((urlStr) => {
+      if (urlStr.includes('categoryId=2')) {
+        return {
+          data: [mockTicketsUser1[0]],
+          pagination: { page: 1, pageSize: 8, totalItems: 1, totalPages: 1 },
+        };
+      }
+      return {
+        data: mockTicketsUser1,
+        pagination: { page: 1, pageSize: 8, totalItems: 2, totalPages: 1 },
+      };
+    });
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    // Initially loads all tickets
+    await waitFor(() => {
+      const table = screen.getByTestId('tickets-table');
+      expect(within(table).getByText('Laptop battery drains quickly')).toBeInTheDocument();
+      expect(within(table).getByText('VPN connection timeout')).toBeInTheDocument();
+    });
+
+    // Select Category filter = 2 (Hardware)
+    const categorySelect = screen.getByTestId('category-filter');
+    await user.selectOptions(categorySelect, '2');
+
+    // Should now show Clear Filters button in header
+    await waitFor(() => {
+      expect(screen.getByTestId('clear-filters-btn')).toBeInTheDocument();
+    });
+
+    // Click Clear Filters button
+    await user.click(screen.getByTestId('clear-filters-btn'));
+
+    // Verify all filter dropdowns/inputs reset and all tickets are shown again
+    await waitFor(() => {
+      expect(screen.getByTestId('search-input')).toHaveValue('');
+      expect(screen.getByTestId('category-filter')).toHaveValue('');
+      expect(screen.getByTestId('priority-filter')).toHaveValue('');
+      expect(screen.getByTestId('status-filter')).toHaveValue('');
+
+      const table = screen.getByTestId('tickets-table');
+      expect(within(table).getByText('Laptop battery drains quickly')).toBeInTheDocument();
+      expect(within(table).getByText('VPN connection timeout')).toBeInTheDocument();
+    });
+  });
 });

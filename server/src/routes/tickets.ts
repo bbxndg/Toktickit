@@ -120,7 +120,7 @@ router.get('/tickets', async (req: Request, res: Response) => {
     const limitNum = Math.min(50, Math.max(1, parseInt(pageSize as string, 10) || 8));
     const skip = (pageNum - 1) * limitNum;
 
-    // 4. Query database
+    // 4. Query database with _count aggregation for active attachments
     const [totalItems, rawTickets] = await Promise.all([
       prisma.ticket.count({ where }),
       prisma.ticket.findMany({
@@ -131,9 +131,12 @@ router.get('/tickets', async (req: Request, res: Response) => {
         include: {
           category: { select: { id: true, name: true } },
           relatedSystem: { select: { id: true, name: true } },
-          attachments: {
-            where: { isRemoved: false },
-            select: { id: true },
+          _count: {
+            select: {
+              attachments: {
+                where: { isRemoved: false },
+              },
+            },
           },
         },
       }),
@@ -150,7 +153,7 @@ router.get('/tickets', async (req: Request, res: Response) => {
       updatedAt: t.updatedAt,
       category: t.category,
       relatedSystem: t.relatedSystem,
-      activeAttachmentsCount: t.attachments.length,
+      activeAttachmentsCount: t._count?.attachments || 0,
     }));
 
     const totalPages = Math.ceil(totalItems / limitNum) || 1;

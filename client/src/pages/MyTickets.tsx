@@ -46,8 +46,9 @@ export const MyTickets: React.FC<MyTicketsProps> = ({ onCreateTicket, onSelectTi
     totalPages: 1,
   });
 
-  // Filters state
-  const [search, setSearch] = useState<string>('');
+  // Filters state with live input and debounced search query
+  const [searchInput, setSearchInput] = useState<string>('');
+  const [debouncedSearch, setDebouncedSearch] = useState<string>('');
   const [categoryId, setCategoryId] = useState<string>('');
   const [requestedPriority, setRequestedPriority] = useState<string>('');
   const [status, setStatus] = useState<string>('');
@@ -55,6 +56,17 @@ export const MyTickets: React.FC<MyTicketsProps> = ({ onCreateTicket, onSelectTi
 
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string>('');
+
+  // Debounce search input by 300ms to avoid excessive API requests during typing
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(searchInput);
+    }, 300);
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [searchInput]);
 
   // Load categories for filter dropdown
   useEffect(() => {
@@ -90,7 +102,7 @@ export const MyTickets: React.FC<MyTicketsProps> = ({ onCreateTicket, onSelectTi
         pageSize: '8',
       });
 
-      if (search.trim()) params.append('search', search.trim());
+      if (debouncedSearch.trim()) params.append('search', debouncedSearch.trim());
       if (categoryId) params.append('categoryId', categoryId);
       if (requestedPriority) params.append('requestedPriority', requestedPriority);
       if (status) params.append('status', status);
@@ -109,7 +121,7 @@ export const MyTickets: React.FC<MyTicketsProps> = ({ onCreateTicket, onSelectTi
     } finally {
       setLoading(false);
     }
-  }, [currentRequester, search, categoryId, requestedPriority, status, page]);
+  }, [currentRequester, debouncedSearch, categoryId, requestedPriority, status, page]);
 
   // Trigger fetch on filter / page / requester change
   useEffect(() => {
@@ -118,14 +130,15 @@ export const MyTickets: React.FC<MyTicketsProps> = ({ onCreateTicket, onSelectTi
 
   // Clear all filters handler
   const handleClearFilters = () => {
-    setSearch('');
+    setSearchInput('');
+    setDebouncedSearch('');
     setCategoryId('');
     setRequestedPriority('');
     setStatus('');
     setPage(1);
   };
 
-  const isFiltered = Boolean(search || categoryId || requestedPriority || status);
+  const isFiltered = Boolean(searchInput || categoryId || requestedPriority || status);
 
   // Helper to format date
   const formatDate = (isoString: string) => {
@@ -227,9 +240,9 @@ export const MyTickets: React.FC<MyTicketsProps> = ({ onCreateTicket, onSelectTi
                 type="text"
                 className="form-control zg-input border-start-0"
                 placeholder="Search by ticket number or summary..."
-                value={search}
+                value={searchInput}
                 onChange={(e) => {
-                  setSearch(e.target.value);
+                  setSearchInput(e.target.value);
                   setPage(1);
                 }}
                 data-testid="search-input"
