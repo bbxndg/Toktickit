@@ -4,7 +4,7 @@
 
 - **Agent / Environment:** Antigravity (Google DeepMind Advanced Agentic Coding Assistant)
 - **Models:** Anthropic Claude 3.7 Sonnet (Thinking) & Google Gemini 3.7 Flash
-- **Workflow:** Pair programming with Spec-Driven Development (Spec DD) and Test-Driven Development (TDD), interactive terminal execution, file inspection, automated test validation, peer review refactoring cycles, and atomic Git commit management.
+- **Workflow:** Pair programming with Spec-Driven Development (Spec DD) and Test-Driven Development (TDD), interactive terminal execution, file inspection, automated test validation, code refactoring based on peer review feedback, and atomic Git commit management.
 
 ---
 
@@ -31,7 +31,7 @@
 Throughout Lab 2, I used **Antigravity (Claude 3.7 Sonnet & Gemini 3.7 Flash)** in a disciplined, human-directed pair-programming model:
 1. **Spec-Driven Architecture:** I began the sprint by having the AI generate complete, exhaustive specifications (`docs/lab-02/`) covering functional requirements, business rules, API schemas, and UI layout criteria before writing any production code.
 2. **Strict Test-Driven Verification (TDD):** Every feature branch was accompanied by automated tests (Supertest for APIs, Vitest + RTL for React components, and E2E user journeys). All 53 tests were executed and passed before opening pull requests.
-3. **Simulated Peer Review & Continuous Refactoring:** I established a rigorous peer review workflow where code improvements (such as switching to database count aggregations, native stream downloading, and UX debouncing) were reviewed, discussed with peers, and implemented via clean atomic commits.
+3. **Collaborative Peer Review & Continuous Refactoring:** I established a rigorous workflow where constructive feedback from peers on GitHub (such as switching to database count aggregations, native stream downloading, and UX debouncing) was addressed and implemented via clean atomic commits.
 4. **Environment & Toolchain Diagnostics:** When TypeScript strict module rules or server concurrency issues arose, I leveraged the AI to diagnose root causes and apply standards-compliant fixes rather than hacky workarounds.
 
 ### Key Learnings & Effective Prompting Strategies
@@ -49,3 +49,4 @@ I maintained complete ownership and oversight throughout the sprint:
 
 > [!NOTE]
 > **Documentation Note:** The content in the Reflection section represents my genuine assessment of the engineering process. I utilized the AI Assistant to structure the Markdown tables and refine the phrasing for maximum clarity and professional presentation.
+
