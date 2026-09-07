@@ -278,14 +278,14 @@ export const CreateTicket: React.FC<CreateTicketProps> = ({ onCancel, onSuccess 
 
   return (
     <div className="container py-2" style={{ maxWidth: '900px' }}>
-      <div className="d-flex justify-content-between align-items-center mb-3">
+      <div className="d-flex flex-column flex-sm-row justify-content-between align-items-start align-items-sm-center gap-2 mb-3">
         <div>
           <h2 className="h4 fw-bold mb-1" style={{ color: 'var(--zg-text-primary)' }}>
             Create IT Support Ticket
           </h2>
           <p className="text-muted small mb-0">Fill in the details below to request IT service or report an issue.</p>
         </div>
-        <button type="button" className="btn btn-sm btn-zg-secondary" onClick={onCancel}>
+        <button type="button" className="btn btn-sm btn-zg-secondary text-nowrap" onClick={onCancel}>
           ← Back to My Tickets
         </button>
       </div>
@@ -297,10 +297,10 @@ export const CreateTicket: React.FC<CreateTicketProps> = ({ onCancel, onSuccess 
       )}
 
       <form onSubmit={handleSubmit} noValidate>
-        <div className="zg-card p-4 shadow-sm mb-4">
+        <div className="zg-card p-3 p-md-4 shadow-sm mb-4">
           {/* Header Metadata Section (Read-Only) */}
           <div className="row g-3 mb-4 p-3 rounded" style={{ backgroundColor: 'var(--zg-bg)' }}>
-            <div className="col-md-4">
+            <div className="col-12 col-md-4">
               <label className="zg-label">Ticket Number</label>
               <input
                 type="text"
@@ -310,7 +310,7 @@ export const CreateTicket: React.FC<CreateTicketProps> = ({ onCancel, onSuccess 
                 disabled
               />
             </div>
-            <div className="col-md-4">
+            <div className="col-12 col-md-4">
               <label className="zg-label">Ticket Date</label>
               <input
                 type="text"
@@ -320,7 +320,7 @@ export const CreateTicket: React.FC<CreateTicketProps> = ({ onCancel, onSuccess 
                 disabled
               />
             </div>
-            <div className="col-md-4">
+            <div className="col-12 col-md-4">
               <label className="zg-label">Requester</label>
               <div className="input-group">
                 <input
@@ -346,7 +346,7 @@ export const CreateTicket: React.FC<CreateTicketProps> = ({ onCancel, onSuccess 
 
           {/* Classification Section */}
           <div className="row g-3 mb-4">
-            <div className="col-md-4">
+            <div className="col-12 col-md-4">
               <label htmlFor="category-select" className="zg-label">
                 Category <span className="text-danger">*</span>
               </label>
@@ -367,7 +367,7 @@ export const CreateTicket: React.FC<CreateTicketProps> = ({ onCancel, onSuccess 
               {errors.category && <span className="zg-error-text" data-testid="error-category">{errors.category}</span>}
             </div>
 
-            <div className="col-md-4">
+            <div className="col-12 col-md-4">
               <label htmlFor="system-select" className="zg-label">
                 Related System <span className="text-danger">*</span>
               </label>
@@ -390,7 +390,7 @@ export const CreateTicket: React.FC<CreateTicketProps> = ({ onCancel, onSuccess 
               )}
             </div>
 
-            <div className="col-md-4">
+            <div className="col-12 col-md-4">
               <label htmlFor="priority-select" className="zg-label">
                 Requested Priority <span className="text-danger">*</span>
               </label>

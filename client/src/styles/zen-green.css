@@ -234,3 +234,25 @@ body {
   color: #15803D;
   font-weight: 600;
 }
+
+/* Mobile & Tablet Responsive Utilities */
+@media (max-width: 767.98px) {
+  .zg-navbar {
+    padding: 0.75rem 1rem !important;
+  }
+  .zg-navbar .container-fluid {
+    display: flex;
+    flex-direction: column !important;
+    align-items: center !important;
+    gap: 0.625rem !important;
+  }
+  .zg-user-pill {
+    width: auto;
+    max-width: 100%;
+    justify-content: center;
+  }
+  .zg-card {
+    padding: 1rem !important;
+  }
+}
+
