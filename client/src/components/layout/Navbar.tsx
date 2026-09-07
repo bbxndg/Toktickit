@@ -27,24 +27,28 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, onNavigate }) => {
         </a>
 
         <div className="d-flex align-items-center ms-4 me-auto gap-2">
-          <button
-            type="button"
-            className={`btn zg-nav-link ${
-              currentView === 'my-tickets' || currentView === 'ticket-detail' ? 'active' : ''
-            }`}
-            onClick={() => onNavigate('my-tickets')}
-            data-testid="nav-my-tickets"
-          >
-            📋 My Tickets
-          </button>
-          <button
-            type="button"
-            className={`btn zg-nav-link ${currentView === 'create-ticket' ? 'active' : ''}`}
-            onClick={() => onNavigate('create-ticket')}
-            data-testid="nav-create-ticket"
-          >
-            ➕ Create Ticket
-          </button>
+          {currentRequester && (
+            <>
+              <button
+                type="button"
+                className={`btn zg-nav-link ${
+                  currentView === 'my-tickets' || currentView === 'ticket-detail' ? 'active' : ''
+                }`}
+                onClick={() => onNavigate('my-tickets')}
+                data-testid="nav-my-tickets"
+              >
+                📋 My Tickets
+              </button>
+              <button
+                type="button"
+                className={`btn zg-nav-link ${currentView === 'create-ticket' ? 'active' : ''}`}
+                onClick={() => onNavigate('create-ticket')}
+                data-testid="nav-create-ticket"
+              >
+                ➕ Create Ticket
+              </button>
+            </>
+          )}
         </div>
 
         <div className="d-flex align-items-center">

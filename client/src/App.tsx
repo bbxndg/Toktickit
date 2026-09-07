@@ -67,7 +67,7 @@ function AppContent() {
       <RequesterSelector />
 
       <main className="container py-4 flex-grow-1">
-        {currentView === 'my-tickets' && (
+        {currentRequester && currentView === 'my-tickets' && (
           <MyTickets
             onCreateTicket={() => setCurrentView('create-ticket')}
             onSelectTicket={(ticketId) => {
@@ -77,7 +77,7 @@ function AppContent() {
           />
         )}
 
-        {currentView === 'create-ticket' && (
+        {currentRequester && currentView === 'create-ticket' && (
           <CreateTicket
             onCancel={() => setCurrentView('my-tickets')}
             onSuccess={(_tktNo) => {
@@ -87,7 +87,7 @@ function AppContent() {
           />
         )}
 
-        {currentView === 'ticket-detail' && selectedTicketId && (
+        {currentRequester && currentView === 'ticket-detail' && selectedTicketId && (
           <TicketDetail
             ticketId={selectedTicketId}
             onBack={() => {
