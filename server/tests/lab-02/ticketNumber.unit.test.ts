@@ -55,3 +55,4 @@ describe('Ticket Number Generator Utility (Unit Tests)', () => {
     expect(result).toBe('TKT-2026-000003');
   });
 });
+
