@@ -11,7 +11,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, onNavigate }) => {
 
   return (
     <nav className="navbar zg-navbar">
-      <div className="container-fluid d-flex flex-column flex-md-row justify-content-between align-items-center gap-2">
+      <div className="container-fluid d-flex flex-column flex-lg-row justify-content-between align-items-center gap-2">
         {/* Brand */}
         <a
           className="navbar-brand text-white fw-bold d-flex align-items-center mb-0"

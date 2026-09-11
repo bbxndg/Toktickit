@@ -459,7 +459,7 @@ export const MyTickets: React.FC<MyTicketsProps> = ({ onCreateTicket, onSelectTi
             </small>
 
             <nav aria-label="Ticket pagination">
-              <ul className="pagination pagination-sm mb-0">
+              <ul className="pagination pagination-sm mb-0 flex-wrap">
                 <li className={`page-item ${pagination.page <= 1 ? 'disabled' : ''}`}>
                   <button
                     type="button"
@@ -472,18 +472,31 @@ export const MyTickets: React.FC<MyTicketsProps> = ({ onCreateTicket, onSelectTi
                   </button>
                 </li>
 
-                {Array.from({ length: pagination.totalPages }, (_, idx) => idx + 1).map((pNum) => (
-                  <li key={pNum} className={`page-item ${pagination.page === pNum ? 'active' : ''}`}>
-                    <button
-                      type="button"
-                      className={`page-link ${pagination.page === pNum ? 'btn-zg-primary border-0' : 'text-dark'}`}
-                      onClick={() => setPage(pNum)}
-                      data-testid={`pagination-page-${pNum}`}
-                    >
-                      {pNum}
-                    </button>
-                  </li>
-                ))}
+                {Array.from({ length: pagination.totalPages }, (_, idx) => idx + 1)
+                  .filter((pNum) => {
+                    if (pagination.totalPages <= 7) return true;
+                    if (pNum === 1 || pNum === pagination.totalPages) return true;
+                    return Math.abs(pNum - pagination.page) <= 1;
+                  })
+                  .map((pNum, idx, arr) => (
+                    <React.Fragment key={pNum}>
+                      {idx > 0 && arr[idx - 1] !== pNum - 1 && (
+                        <li className="page-item disabled" key={`ellipsis-${pNum}`}>
+                          <span className="page-link text-muted">…</span>
+                        </li>
+                      )}
+                      <li className={`page-item ${pagination.page === pNum ? 'active' : ''}`}>
+                        <button
+                          type="button"
+                          className={`page-link ${pagination.page === pNum ? 'btn-zg-primary border-0' : 'text-dark'}`}
+                          onClick={() => setPage(pNum)}
+                          data-testid={`pagination-page-${pNum}`}
+                        >
+                          {pNum}
+                        </button>
+                      </li>
+                    </React.Fragment>
+                  ))}
 
                 <li className={`page-item ${pagination.page >= pagination.totalPages ? 'disabled' : ''}`}>
                   <button
