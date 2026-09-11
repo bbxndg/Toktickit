@@ -2,8 +2,8 @@ import React from 'react';
 import { useRequester } from '../../context/RequesterContext';
 
 interface NavbarProps {
-  currentView: 'my-tickets' | 'create-ticket' | 'ticket-detail' | 'health-diagnostic';
-  onNavigate: (view: 'my-tickets' | 'create-ticket' | 'health-diagnostic') => void;
+  currentView: 'my-tickets' | 'create-ticket' | 'ticket-detail';
+  onNavigate: (view: 'my-tickets' | 'create-ticket') => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({ currentView, onNavigate }) => {

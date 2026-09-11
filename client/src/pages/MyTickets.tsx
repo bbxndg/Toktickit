@@ -472,20 +472,32 @@ export const MyTickets: React.FC<MyTicketsProps> = ({ onCreateTicket, onSelectTi
                   </button>
                 </li>
 
-                {Array.from({ length: pagination.totalPages }, (_, idx) => idx + 1)
-                  .filter((pNum) => {
-                    if (pagination.totalPages <= 7) return true;
-                    if (pNum === 1 || pNum === pagination.totalPages) return true;
-                    return Math.abs(pNum - pagination.page) <= 1;
-                  })
-                  .map((pNum, idx, arr) => (
-                    <React.Fragment key={pNum}>
-                      {idx > 0 && arr[idx - 1] !== pNum - 1 && (
-                        <li className="page-item disabled" key={`ellipsis-${pNum}`}>
+                {(() => {
+                  const getPaginationItems = (current: number, total: number): (number | string)[] => {
+                    if (total <= 7) {
+                      return Array.from({ length: total }, (_, i) => i + 1);
+                    }
+                    if (current <= 4) {
+                      return [1, 2, 3, 4, 5, '...', total];
+                    }
+                    if (current >= total - 3) {
+                      return [1, '...', total - 4, total - 3, total - 2, total - 1, total];
+                    }
+                    return [1, '...', current - 1, current, current + 1, '...', total];
+                  };
+
+                  return getPaginationItems(pagination.page, pagination.totalPages).map((item, idx) => {
+                    if (item === '...') {
+                      return (
+                        <li key={`ellipsis-${idx}`} className="page-item disabled">
                           <span className="page-link text-muted">…</span>
                         </li>
-                      )}
-                      <li className={`page-item ${pagination.page === pNum ? 'active' : ''}`}>
+                      );
+                    }
+
+                    const pNum = Number(item);
+                    return (
+                      <li key={pNum} className={`page-item ${pagination.page === pNum ? 'active' : ''}`}>
                         <button
                           type="button"
                           className={`page-link ${pagination.page === pNum ? 'btn-zg-primary border-0' : 'text-dark'}`}
@@ -495,8 +507,9 @@ export const MyTickets: React.FC<MyTicketsProps> = ({ onCreateTicket, onSelectTi
                           {pNum}
                         </button>
                       </li>
-                    </React.Fragment>
-                  ))}
+                    );
+                  });
+                })()}
 
                 <li className={`page-item ${pagination.page >= pagination.totalPages ? 'disabled' : ''}`}>
                   <button

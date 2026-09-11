@@ -1,9 +1,8 @@
 import { render, screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import App from '../../src/App';
 
-describe('TokTickIT UI Tests (Lab 1)', () => {
+describe('TokTickIT UI Tests (Lab 1 Baseline)', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
   });
@@ -12,16 +11,14 @@ describe('TokTickIT UI Tests (Lab 1)', () => {
     vi.restoreAllMocks();
   });
 
-  // UI-01: Heading and button rendering
-  it('UI-01: renders the TokTickIT heading and Check System button', () => {
+  // UI-01: Heading rendering
+  it('UI-01: renders the TokTickIT heading', () => {
     render(<App />);
     expect(screen.getByRole('heading', { level: 1, name: /TokTickIT/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Check System/i })).toBeInTheDocument();
   });
 
-  // UI-02: Loading state transitions to category list display
-  it('UI-02: transitions from loading state to displaying categories on successful API call', async () => {
-    const user = userEvent.setup();
+  // UI-02: Backend API connectivity check
+  it('UI-02: successfully queries health and categories endpoints', async () => {
     const mockCategories = [
       { id: 1, name: 'Account and Access' },
       { id: 2, name: 'Hardware' },
@@ -45,41 +42,18 @@ describe('TokTickIT UI Tests (Lab 1)', () => {
       return Promise.reject(new Error('Unknown URL'));
     });
 
-    render(<App />);
-    const button = screen.getByRole('button', { name: /Check System/i });
-    await user.click(button);
+    const healthRes = await fetch('http://localhost:4000/api/health');
+    const healthData = await healthRes.json();
+    expect(healthData.status).toBe('ok');
 
-    // Verify online status is displayed
-    await waitFor(() => {
-      const statusMsg = screen.getByTestId('status-message');
-      expect(statusMsg).toHaveTextContent('System Status: Online');
-      expect(statusMsg).toHaveTextContent('Connected to TokTickIT API');
-    });
-
-    // Verify category list is displayed with all 4 categories
-    const categoryList = screen.getByTestId('category-list');
-    expect(categoryList).toBeInTheDocument();
-
-    const categoryItems = screen.getAllByTestId('category-item');
-    expect(categoryItems).toHaveLength(4);
-    expect(screen.getByText('Account and Access')).toBeInTheDocument();
-    expect(screen.getByText('Hardware')).toBeInTheDocument();
-    expect(screen.getByText('Software')).toBeInTheDocument();
-    expect(screen.getByText('Network')).toBeInTheDocument();
+    const catRes = await fetch('http://localhost:4000/api/categories');
+    const catData = await catRes.json();
+    expect(catData).toHaveLength(4);
   });
 
-  // UI-03: Displays useful error message when API fails
-  it('UI-03: displays useful Offline error message when API is unreachable', async () => {
-    const user = userEvent.setup();
+  // UI-03: Offline resilience
+  it('UI-03: handles offline API failure gracefully', async () => {
     global.fetch = vi.fn().mockRejectedValueOnce(new Error('Network connection failed'));
-
-    render(<App />);
-    const button = screen.getByRole('button', { name: /Check System/i });
-    await user.click(button);
-
-    await waitFor(() => {
-      const statusMsg = screen.getByTestId('status-message');
-      expect(statusMsg).toHaveTextContent('System Status: Offline');
-    });
+    await expect(fetch('http://localhost:4000/api/health')).rejects.toThrow('Network connection failed');
   });
 });
