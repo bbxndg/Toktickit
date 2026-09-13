@@ -1,6 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -10,8 +7,83 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model RequesterUser {
+  id         Int      @id @default(autoincrement())
+  name       String
+  email      String   @unique
+  department String
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  tickets    Ticket[]
+}
+
 model Category {
   id        Int      @id @default(autoincrement())
   name      String   @unique
+  isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
+  tickets   Ticket[]
+}
+
+model RelatedSystem {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  tickets   Ticket[]
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum TicketStatus {
+  NEW
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+model Ticket {
+  id                Int          @id @default(autoincrement())
+  ticketNumber      String       @unique
+  summary           String
+  description       String
+  requestedPriority Priority
+  itPriority        Priority?
+  status            TicketStatus @default(NEW)
+  requesterId       Int
+  requester         RequesterUser @relation(fields: [requesterId], references: [id])
+  categoryId        Int
+  category          Category      @relation(fields: [categoryId], references: [id])
+  relatedSystemId   Int
+  relatedSystem     RelatedSystem @relation(fields: [relatedSystemId], references: [id])
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+  attachments       Attachment[]
+
+  @@index([requesterId, createdAt])
+  @@index([ticketNumber])
+}
+
+model Attachment {
+  id            Int       @id @default(autoincrement())
+  ticketId      Int
+  ticket        Ticket    @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  filename      String
+  originalName  String
+  mimeType      String
+  sizeBytes     Int
+  isRemoved     Boolean   @default(false)
+  removedAt     DateTime?
+  removalReason String?
+  createdAt     DateTime  @default(now())
+
+  @@index([ticketId])
+  @@index([isRemoved])
 }
