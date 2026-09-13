@@ -2,18 +2,19 @@ import React from 'react';
 import { useRequester } from '../../context/RequesterContext';
 
 interface NavbarProps {
-  currentView: 'my-tickets' | 'create-ticket' | 'ticket-detail' | 'health-diagnostic';
-  onNavigate: (view: 'my-tickets' | 'create-ticket' | 'health-diagnostic') => void;
+  currentView: 'my-tickets' | 'create-ticket' | 'ticket-detail';
+  onNavigate: (view: 'my-tickets' | 'create-ticket') => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({ currentView, onNavigate }) => {
   const { currentRequester, openSelector } = useRequester();
 
   return (
-    <nav className="navbar navbar-expand-lg zg-navbar">
-      <div className="container-fluid">
+    <nav className="navbar zg-navbar">
+      <div className="container-fluid d-flex flex-column flex-lg-row justify-content-between align-items-center gap-2">
+        {/* Brand */}
         <a
-          className="navbar-brand text-white fw-bold d-flex align-items-center"
+          className="navbar-brand text-white fw-bold d-flex align-items-center mb-0"
           href="#home"
           onClick={(e) => {
             e.preventDefault();
@@ -26,32 +27,32 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, onNavigate }) => {
           </h1>
         </a>
 
-        <div className="d-flex align-items-center ms-4 me-auto gap-2">
-          {currentRequester && (
-            <>
-              <button
-                type="button"
-                className={`btn zg-nav-link ${
-                  currentView === 'my-tickets' || currentView === 'ticket-detail' ? 'active' : ''
-                }`}
-                onClick={() => onNavigate('my-tickets')}
-                data-testid="nav-my-tickets"
-              >
-                📋 My Tickets
-              </button>
-              <button
-                type="button"
-                className={`btn zg-nav-link ${currentView === 'create-ticket' ? 'active' : ''}`}
-                onClick={() => onNavigate('create-ticket')}
-                data-testid="nav-create-ticket"
-              >
-                ➕ Create Ticket
-              </button>
-            </>
-          )}
-        </div>
+        {/* Navigation Tabs */}
+        {currentRequester && (
+          <div className="d-flex align-items-center justify-content-center gap-2 my-1 my-md-0">
+            <button
+              type="button"
+              className={`btn zg-nav-link ${
+                currentView === 'my-tickets' || currentView === 'ticket-detail' ? 'active' : ''
+              }`}
+              onClick={() => onNavigate('my-tickets')}
+              data-testid="nav-my-tickets"
+            >
+              📋 My Tickets
+            </button>
+            <button
+              type="button"
+              className={`btn zg-nav-link ${currentView === 'create-ticket' ? 'active' : ''}`}
+              onClick={() => onNavigate('create-ticket')}
+              data-testid="nav-create-ticket"
+            >
+              ➕ Create Ticket
+            </button>
+          </div>
+        )}
 
-        <div className="d-flex align-items-center">
+        {/* User Identity / Select Requester */}
+        <div className="d-flex align-items-center justify-content-center">
           {currentRequester ? (
             <div className="zg-user-pill" data-testid="user-identity-badge">
               <span className="fs-6">👤</span>

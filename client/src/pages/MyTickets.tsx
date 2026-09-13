@@ -459,7 +459,7 @@ export const MyTickets: React.FC<MyTicketsProps> = ({ onCreateTicket, onSelectTi
             </small>
 
             <nav aria-label="Ticket pagination">
-              <ul className="pagination pagination-sm mb-0">
+              <ul className="pagination pagination-sm mb-0 flex-wrap">
                 <li className={`page-item ${pagination.page <= 1 ? 'disabled' : ''}`}>
                   <button
                     type="button"
@@ -472,18 +472,44 @@ export const MyTickets: React.FC<MyTicketsProps> = ({ onCreateTicket, onSelectTi
                   </button>
                 </li>
 
-                {Array.from({ length: pagination.totalPages }, (_, idx) => idx + 1).map((pNum) => (
-                  <li key={pNum} className={`page-item ${pagination.page === pNum ? 'active' : ''}`}>
-                    <button
-                      type="button"
-                      className={`page-link ${pagination.page === pNum ? 'btn-zg-primary border-0' : 'text-dark'}`}
-                      onClick={() => setPage(pNum)}
-                      data-testid={`pagination-page-${pNum}`}
-                    >
-                      {pNum}
-                    </button>
-                  </li>
-                ))}
+                {(() => {
+                  const getPaginationItems = (current: number, total: number): (number | string)[] => {
+                    if (total <= 7) {
+                      return Array.from({ length: total }, (_, i) => i + 1);
+                    }
+                    if (current <= 4) {
+                      return [1, 2, 3, 4, 5, '...', total];
+                    }
+                    if (current >= total - 3) {
+                      return [1, '...', total - 4, total - 3, total - 2, total - 1, total];
+                    }
+                    return [1, '...', current - 1, current, current + 1, '...', total];
+                  };
+
+                  return getPaginationItems(pagination.page, pagination.totalPages).map((item, idx) => {
+                    if (item === '...') {
+                      return (
+                        <li key={`ellipsis-${idx}`} className="page-item disabled">
+                          <span className="page-link text-muted">…</span>
+                        </li>
+                      );
+                    }
+
+                    const pNum = Number(item);
+                    return (
+                      <li key={pNum} className={`page-item ${pagination.page === pNum ? 'active' : ''}`}>
+                        <button
+                          type="button"
+                          className={`page-link ${pagination.page === pNum ? 'btn-zg-primary border-0' : 'text-dark'}`}
+                          onClick={() => setPage(pNum)}
+                          data-testid={`pagination-page-${pNum}`}
+                        >
+                          {pNum}
+                        </button>
+                      </li>
+                    );
+                  });
+                })()}
 
                 <li className={`page-item ${pagination.page >= pagination.totalPages ? 'disabled' : ''}`}>
                   <button

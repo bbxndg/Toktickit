@@ -246,36 +246,36 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({ ticketId, onBack }) 
   return (
     <div className="container py-2" style={{ maxWidth: '900px' }}>
       {/* Header Row */}
-      <div className="d-flex justify-content-between align-items-center mb-3">
+      <div className="d-flex flex-column flex-sm-row justify-content-between align-items-start align-items-sm-center gap-2 mb-3">
         <div>
           <h2 className="h4 fw-bold mb-1" style={{ color: 'var(--zg-text-primary)' }}>
             Ticket Detail
           </h2>
           <p className="text-muted small mb-0">Read-only view of your submitted ticket.</p>
         </div>
-        <button type="button" className="btn btn-sm btn-zg-secondary" onClick={onBack}>
+        <button type="button" className="btn btn-sm btn-zg-secondary text-nowrap" onClick={onBack}>
           ← Back to My Tickets
         </button>
       </div>
 
       {/* Ticket Header Card (Read-Only) */}
-      <div className="zg-card p-4 shadow-sm mb-4">
+      <div className="zg-card p-3 p-md-4 shadow-sm mb-4">
         <div
           className="row g-3 mb-4 p-3 rounded"
           style={{ backgroundColor: 'var(--zg-bg)' }}
           data-testid="ticket-header"
         >
-          <div className="col-md-4">
+          <div className="col-12 col-md-4">
             <label className="zg-label">Ticket Number</label>
             <p className="fw-bold font-monospace mb-0" style={{ color: 'var(--zg-primary)' }}>
               {ticket.ticketNumber}
             </p>
           </div>
-          <div className="col-md-4">
+          <div className="col-12 col-md-4">
             <label className="zg-label">Ticket Date</label>
             <p className="mb-0 text-dark">{fmt(ticket.createdAt)}</p>
           </div>
-          <div className="col-md-4">
+          <div className="col-12 col-md-4">
             <label className="zg-label">Requester</label>
             <p className="mb-0 fw-semibold text-dark">{ticket.requester.name}</p>
             <small className="text-muted">{ticket.requester.department}</small>
@@ -284,15 +284,15 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({ ticketId, onBack }) 
 
         {/* Classification Row */}
         <div className="row g-3 mb-4">
-          <div className="col-md-4">
+          <div className="col-12 col-md-4">
             <label className="zg-label">Category</label>
             <p className="mb-0">{ticket.category.name}</p>
           </div>
-          <div className="col-md-4">
+          <div className="col-12 col-md-4">
             <label className="zg-label">Related System</label>
             <p className="mb-0">{ticket.relatedSystem.name}</p>
           </div>
-          <div className="col-md-4">
+          <div className="col-12 col-md-4">
             <label className="zg-label">Status</label>
             <div className="mt-1">{renderStatusBadge(ticket.status)}</div>
           </div>
@@ -300,15 +300,15 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({ ticketId, onBack }) 
 
         {/* Priority Row */}
         <div className="row g-3 mb-4">
-          <div className="col-md-4">
+          <div className="col-12 col-md-4">
             <label className="zg-label">Requested Priority</label>
             <div className="mt-1">{renderPriorityBadge(ticket.requestedPriority)}</div>
           </div>
-          <div className="col-md-4">
+          <div className="col-12 col-md-4">
             <label className="zg-label">IT Priority</label>
             <div className="mt-1">{renderPriorityBadge(ticket.itPriority)}</div>
           </div>
-          <div className="col-md-4">
+          <div className="col-12 col-md-4">
             <label className="zg-label">Last Updated</label>
             <p className="mb-0 small text-muted">{fmt(ticket.updatedAt)}</p>
           </div>
@@ -390,10 +390,10 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({ ticketId, onBack }) 
                 {activeAttachments.map((att) => (
                   <li
                     key={att.id}
-                    className="list-group-item d-flex justify-content-between align-items-center px-0"
+                    className="list-group-item d-flex flex-column flex-sm-row justify-content-between align-items-start align-items-sm-center gap-2 px-0 py-2"
                     data-testid={`attachment-item-${att.id}`}
                   >
-                    <div className="d-flex align-items-center gap-2 text-truncate me-2">
+                    <div className="d-flex align-items-center gap-2 text-truncate me-2 w-100 w-sm-auto">
                       <span>📄</span>
                       <div className="text-truncate">
                         <span className="fw-medium text-dark">{att.originalName}</span>
@@ -402,7 +402,7 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({ ticketId, onBack }) 
                         </small>
                       </div>
                     </div>
-                    <div className="d-flex gap-2 flex-shrink-0">
+                    <div className="d-flex gap-2 flex-shrink-0 align-self-end align-self-sm-center">
                       <a
                         href={`${API_BASE}/api/attachments/${att.id}/download?requesterId=${currentRequester?.id}`}
                         className="btn btn-sm btn-zg-secondary"
