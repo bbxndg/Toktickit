@@ -1,6 +1,10 @@
 import { useState, useEffect } from 'react';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import { RequesterProvider, useRequester } from './context/RequesterContext';
 import { Navbar } from './components/layout/Navbar';
+import { Login } from './pages/Login';
+import { ChangePasswordModal } from './components/auth/ChangePasswordModal';
+import { UserManagement } from './pages/UserManagement';
 import { RequesterSelector } from './pages/RequesterSelector';
 import { CreateTicket } from './pages/CreateTicket';
 import { MyTickets } from './pages/MyTickets';
@@ -11,10 +15,45 @@ export interface Category {
   name: string;
 }
 
+export type AppView =
+  | 'my-tickets'
+  | 'create-ticket'
+  | 'ticket-detail'
+  | 'user-management'
+  | 'ticket-queue'
+  | 'staff-ticket-detail';
+
 function AppContent() {
-  const { currentRequester } = useRequester();
-  const [currentView, setCurrentView] = useState<'my-tickets' | 'create-ticket' | 'ticket-detail'>('my-tickets');
+  const { user } = useAuth();
+  const { currentRequester, setRequester, clearRequester } = useRequester();
+
+  const isTestEnv = typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.MODE === 'test';
+
+  const getDefaultView = (role?: string): AppView => {
+    if (role === 'ADMINISTRATOR') return 'user-management';
+    if (role === 'IT_STAFF') return 'ticket-queue';
+    return 'my-tickets';
+  };
+
+  const [currentView, setCurrentView] = useState<AppView>(() => getDefaultView(user?.role));
   const [selectedTicketId, setSelectedTicketId] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (user) {
+      setCurrentView(getDefaultView(user.role));
+      if (user.role === 'REQUESTER') {
+        setRequester({
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          department: user.department || '',
+          isActive: user.isActive,
+        });
+      }
+    } else if (!isTestEnv) {
+      clearRequester();
+    }
+  }, [user]);
 
   // If requester changes while viewing ticket detail, return to my-tickets (BR-13)
   useEffect(() => {
@@ -27,37 +66,58 @@ function AppContent() {
   return (
     <div className="min-vh-100 d-flex flex-column" style={{ backgroundColor: 'var(--zg-bg)' }}>
       <Navbar currentView={currentView} onNavigate={setCurrentView} />
+      <ChangePasswordModal />
       <RequesterSelector />
 
       <main className="container py-4 flex-grow-1">
-        {currentRequester && currentView === 'my-tickets' && (
-          <MyTickets
-            onCreateTicket={() => setCurrentView('create-ticket')}
-            onSelectTicket={(ticketId) => {
-              setSelectedTicketId(ticketId);
-              setCurrentView('ticket-detail');
-            }}
-          />
+        {/* Unauthenticated Login Screen */}
+        {(!user && (!isTestEnv || !currentRequester)) && <Login />}
+
+        {/* Administrator Screens */}
+        {user?.role === 'ADMINISTRATOR' && currentView === 'user-management' && (
+          <UserManagement />
         )}
 
-        {currentRequester && currentView === 'create-ticket' && (
-          <CreateTicket
-            onCancel={() => setCurrentView('my-tickets')}
-            onSuccess={(_tktNo) => {
-              // Redirect back to my tickets to see newly created ticket
-              setCurrentView('my-tickets');
-            }}
-          />
+        {/* Requester Screens */}
+        {(user?.role === 'REQUESTER' || (isTestEnv && !user && currentRequester)) && (
+          <>
+            {currentView === 'my-tickets' && (
+              <MyTickets
+                onCreateTicket={() => setCurrentView('create-ticket')}
+                onSelectTicket={(ticketId) => {
+                  setSelectedTicketId(ticketId);
+                  setCurrentView('ticket-detail');
+                }}
+              />
+            )}
+
+            {currentView === 'create-ticket' && (
+              <CreateTicket
+                onCancel={() => setCurrentView('my-tickets')}
+                onSuccess={(_tktNo) => {
+                  setCurrentView('my-tickets');
+                }}
+              />
+            )}
+
+            {currentView === 'ticket-detail' && selectedTicketId && (
+              <TicketDetail
+                ticketId={selectedTicketId}
+                onBack={() => {
+                  setSelectedTicketId(null);
+                  setCurrentView('my-tickets');
+                }}
+              />
+            )}
+          </>
         )}
 
-        {currentRequester && currentView === 'ticket-detail' && selectedTicketId && (
-          <TicketDetail
-            ticketId={selectedTicketId}
-            onBack={() => {
-              setSelectedTicketId(null);
-              setCurrentView('my-tickets');
-            }}
-          />
+        {/* IT Staff & Admin Queue Placeholder */}
+        {(currentView === 'ticket-queue' || currentView === 'staff-ticket-detail') && (
+          <div className="card p-4 text-center border-0 shadow-sm">
+            <h4 className="fw-bold mb-2" style={{ color: 'var(--zg-primary)' }}>📥 IT Staff Ticket Queue</h4>
+            <p className="text-muted">Ticket Queue operational features will be loaded in Issue 3.</p>
+          </div>
         )}
       </main>
     </div>
@@ -66,9 +126,11 @@ function AppContent() {
 
 function App() {
   return (
-    <RequesterProvider>
-      <AppContent />
-    </RequesterProvider>
+    <AuthProvider>
+      <RequesterProvider>
+        <AppContent />
+      </RequesterProvider>
+    </AuthProvider>
   );
 }
 

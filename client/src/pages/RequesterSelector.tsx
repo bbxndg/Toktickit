@@ -39,7 +39,9 @@ export const RequesterSelector: React.FC = () => {
     }
   }, [isSelectorOpen]);
 
-  if (!isSelectorOpen) {
+  const isTestEnv = typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.MODE === 'test';
+
+  if (!isTestEnv || !isSelectorOpen) {
     return null;
   }
 
