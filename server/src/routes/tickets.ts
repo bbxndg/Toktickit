@@ -197,7 +197,7 @@ router.post('/tickets', handleUpload, async (req: Request, res: Response) => {
     if (!requesterId || isNaN(parsedRequesterId)) {
       validationErrors.push({ field: 'requesterId', message: 'Requester ID is required.' });
     } else {
-      const requester = await prisma.requesterUser.findUnique({
+      const requester = await prisma.user.findUnique({
         where: { id: parsedRequesterId },
       });
       if (!requester || !requester.isActive) {
