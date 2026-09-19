@@ -52,8 +52,12 @@ function AppContent() {
           isActive: user.isActive,
         });
       }
-    } else if (!isTestEnv) {
-      clearRequester();
+    } else {
+      if (!isTestEnv) {
+        clearRequester();
+      }
+      setCurrentView('my-tickets');
+      setSelectedTicketId(null);
     }
   }, [user]);
 
@@ -73,65 +77,73 @@ function AppContent() {
 
       <main className="container py-4 flex-grow-1">
         {/* Unauthenticated Login Screen */}
-        {(!user && (!isTestEnv || !currentRequester)) && <Login />}
-
-        {/* Administrator Screens */}
-        {user?.role === 'ADMINISTRATOR' && currentView === 'user-management' && (
-          <UserManagement />
-        )}
-
-        {/* Requester Screens */}
-        {(user?.role === 'REQUESTER' || (isTestEnv && !user && currentRequester)) && (
+        {!user && (!isTestEnv || !currentRequester) ? (
+          <Login />
+        ) : (
           <>
-            {currentView === 'my-tickets' && (
-              <MyTickets
-                onCreateTicket={() => setCurrentView('create-ticket')}
-                onSelectTicket={(ticketId) => {
-                  setSelectedTicketId(ticketId);
-                  setCurrentView('ticket-detail');
-                }}
-              />
+            {/* Administrator Screens */}
+            {user?.role === 'ADMINISTRATOR' && currentView === 'user-management' && (
+              <UserManagement />
             )}
 
-            {currentView === 'create-ticket' && (
-              <CreateTicket
-                onCancel={() => setCurrentView('my-tickets')}
-                onSuccess={(_tktNo) => {
-                  setCurrentView('my-tickets');
-                }}
-              />
+            {/* Requester Screens */}
+            {(user?.role === 'REQUESTER' || (isTestEnv && !user && currentRequester)) && (
+              <>
+                {currentView === 'my-tickets' && (
+                  <MyTickets
+                    onCreateTicket={() => setCurrentView('create-ticket')}
+                    onSelectTicket={(ticketId) => {
+                      setSelectedTicketId(ticketId);
+                      setCurrentView('ticket-detail');
+                    }}
+                  />
+                )}
+
+                {currentView === 'create-ticket' && (
+                  <CreateTicket
+                    onCancel={() => setCurrentView('my-tickets')}
+                    onSuccess={(_tktNo) => {
+                      setCurrentView('my-tickets');
+                    }}
+                  />
+                )}
+
+                {currentView === 'ticket-detail' && selectedTicketId && (
+                  <TicketDetail
+                    ticketId={selectedTicketId}
+                    onBack={() => {
+                      setSelectedTicketId(null);
+                      setCurrentView('my-tickets');
+                    }}
+                  />
+                )}
+              </>
             )}
 
-            {currentView === 'ticket-detail' && selectedTicketId && (
-              <TicketDetail
-                ticketId={selectedTicketId}
-                onBack={() => {
-                  setSelectedTicketId(null);
-                  setCurrentView('my-tickets');
-                }}
-              />
+            {/* IT Staff & Admin Queue Views */}
+            {(user?.role === 'IT_STAFF' || user?.role === 'ADMINISTRATOR') && (
+              <>
+                {currentView === 'ticket-queue' && (
+                  <StaffTicketQueue
+                    onSelectTicket={(ticketId) => {
+                      setSelectedTicketId(ticketId);
+                      setCurrentView('staff-ticket-detail');
+                    }}
+                  />
+                )}
+
+                {currentView === 'staff-ticket-detail' && selectedTicketId && (
+                  <StaffTicketDetail
+                    ticketId={selectedTicketId}
+                    onBack={() => {
+                      setSelectedTicketId(null);
+                      setCurrentView('ticket-queue');
+                    }}
+                  />
+                )}
+              </>
             )}
           </>
-        )}
-
-        {/* IT Staff & Admin Queue Views */}
-        {currentView === 'ticket-queue' && (
-          <StaffTicketQueue
-            onSelectTicket={(ticketId) => {
-              setSelectedTicketId(ticketId);
-              setCurrentView('staff-ticket-detail');
-            }}
-          />
-        )}
-
-        {currentView === 'staff-ticket-detail' && selectedTicketId && (
-          <StaffTicketDetail
-            ticketId={selectedTicketId}
-            onBack={() => {
-              setSelectedTicketId(null);
-              setCurrentView('ticket-queue');
-            }}
-          />
         )}
       </main>
     </div>
