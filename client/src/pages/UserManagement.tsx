@@ -332,6 +332,13 @@ export const UserManagement: React.FC = () => {
                               ? 'bg-primary'
                               : 'bg-secondary'
                           }`}
+                          title={
+                            u.role === 'ADMINISTRATOR'
+                              ? 'Administrator: Full system configuration & user management'
+                              : u.role === 'IT_STAFF'
+                              ? 'IT Staff: Ticket queue management, triage, and operational updates'
+                              : 'Requester: Submit and track service requests'
+                          }
                           data-testid={`user-role-badge-${u.id}`}
                         >
                           {u.role === 'ADMINISTRATOR' ? 'Admin' : u.role === 'IT_STAFF' ? 'IT Staff' : 'Requester'}
@@ -507,7 +514,7 @@ export const UserManagement: React.FC = () => {
           <div className="modal-dialog modal-dialog-centered">
             <div className="modal-content">
               <div className="modal-header">
-                <h5 className="modal-title fw-bold">Edit User Account</h5>
+                <h5 className="modal-title fw-bold">Edit User: {editingUser.name}</h5>
                 <button type="button" className="btn-close" onClick={() => setEditingUser(null)}></button>
               </div>
               <form onSubmit={handleEditSubmit} data-testid="edit-user-form">
@@ -517,13 +524,13 @@ export const UserManagement: React.FC = () => {
                   {/* Safety rule notices */}
                   {currentAdmin?.id === editingUser.id && (
                     <div className="alert alert-warning py-2 small mb-3" data-testid="self-edit-alert">
-                      🛡️ <strong>Safety Rule:</strong> You are editing your own administrator account. You cannot deactivate yourself or remove your administrator role.
+                      🛡️ <strong>Safety Rule:</strong> You are editing your own administrator account. You cannot deactivate your own administrator account or remove your administrator role.
                     </div>
                   )}
 
                   {editingUser.role === 'ADMINISTRATOR' && editingUser.isActive && activeAdminCount <= 1 && currentAdmin?.id !== editingUser.id && (
                     <div className="alert alert-warning py-2 small mb-3" data-testid="last-admin-alert">
-                      🛡️ <strong>Safety Rule:</strong> This user is the only active administrator. Their account cannot be deactivated or demoted.
+                      🛡️ <strong>Safety Rule:</strong> At least one active Administrator must remain in the system. Their account cannot be deactivated or demoted.
                     </div>
                   )}
 
