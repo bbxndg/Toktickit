@@ -190,3 +190,4 @@ describe('Lab 3: Staff Ticket Queue APIs (API-09, API-10)', () => {
     expect(res.body.data.every((t: any) => t.status === 'IN_PROGRESS' && t.owner?.id === staffUser.id)).toBe(true);
   });
 });
+

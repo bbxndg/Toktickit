@@ -622,3 +622,4 @@ export const StaffTicketQueue: React.FC<StaffTicketQueueProps> = ({ onSelectTick
     </div>
   );
 };
+
