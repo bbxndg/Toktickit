@@ -68,7 +68,8 @@ export async function authenticate(req: AuthenticatedRequest, res: Response, nex
   }
 }
 
-export function requireRole(...allowedRoles: Role[]) {
+export function requireRole(...allowedRoles: (Role | Role[])[]) {
+  const flatRoles = allowedRoles.flat();
   return (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     if (!req.user) {
       return res.status(401).json({
@@ -79,7 +80,7 @@ export function requireRole(...allowedRoles: Role[]) {
       });
     }
 
-    if (!allowedRoles.includes(req.user.role)) {
+    if (!flatRoles.includes(req.user.role)) {
       return res.status(403).json({
         error: {
           code: 'FORBIDDEN',

@@ -11,6 +11,7 @@ import ticketDetailRouter from './routes/ticketDetail';
 import authRouter from './routes/auth';
 import adminUsersRouter from './routes/adminUsers';
 import staffRouter from './routes/staff';
+import commentsNotesRouter from './routes/commentsNotes';
 
 dotenv.config();
 const app = express();
@@ -30,6 +31,7 @@ app.use('/api', ticketDetailRouter);
 app.use('/api', authRouter);
 app.use('/api', adminUsersRouter);
 app.use('/api', staffRouter);
+app.use('/api', commentsNotesRouter);
 
 const PORT = process.env.PORT || 4000;
 
