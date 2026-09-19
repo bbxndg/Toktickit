@@ -4,6 +4,7 @@ import path from 'path';
 import fs from 'fs';
 import multer from 'multer';
 import { uploadAttachments } from '../utils/fileUpload';
+import { verifyToken } from '../utils/auth';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -22,7 +23,16 @@ router.get('/tickets/:id', async (req: Request, res: Response) => {
       });
     }
 
-    if (!req.query.requesterId || isNaN(requesterId)) {
+    let authRequesterId: number | null = null;
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const payload = verifyToken(authHeader.split(' ')[1]);
+      if (payload && payload.role === 'REQUESTER') {
+        authRequesterId = payload.id;
+      }
+    }
+
+    if (!authHeader && (!req.query.requesterId || isNaN(requesterId))) {
       return res.status(400).json({
         error: {
           code: 'VALIDATION_ERROR',
@@ -60,8 +70,15 @@ router.get('/tickets/:id', async (req: Request, res: Response) => {
       });
     }
 
-    // Ownership enforcement (BR-04)
-    if (ticket.requesterId !== requesterId) {
+    // Lab 3 Requester isolation (BR-06): Requesters can only access owned tickets; 404 to avoid leaking existence
+    if (authRequesterId !== null && ticket.requesterId !== authRequesterId) {
+      return res.status(404).json({
+        error: { code: 'NOT_FOUND', message: 'Ticket not found.' },
+      });
+    }
+
+    // Lab 2 Legacy ownership enforcement (BR-04 without token)
+    if (authRequesterId === null && ticket.requesterId !== requesterId) {
       return res.status(403).json({
         error: { code: 'FORBIDDEN', message: 'You do not have permission to view this ticket.' },
       });

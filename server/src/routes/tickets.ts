@@ -3,6 +3,7 @@ import { PrismaClient, Priority, TicketStatus } from '@prisma/client';
 import multer from 'multer';
 import { uploadAttachments } from '../utils/fileUpload';
 import { generateTicketNumber } from '../utils/ticketNumber';
+import { verifyToken } from '../utils/auth';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -63,9 +64,21 @@ router.get('/tickets', async (req: Request, res: Response) => {
       pageSize,
     } = req.query;
 
-    // 1. Mandatory requesterId check for strict data isolation (BR-04)
-    const parsedRequesterId = parseInt(requesterId as string, 10);
-    if (!requesterId || isNaN(parsedRequesterId)) {
+    let parsedRequesterId: number | undefined;
+
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const payload = verifyToken(authHeader.split(' ')[1]);
+      if (payload && payload.role === 'REQUESTER') {
+        parsedRequesterId = payload.id;
+      }
+    }
+
+    if (!parsedRequesterId) {
+      parsedRequesterId = parseInt(requesterId as string, 10);
+    }
+
+    if (!parsedRequesterId || isNaN(parsedRequesterId)) {
       return res.status(400).json({
         error: {
           code: 'VALIDATION_ERROR',
@@ -192,9 +205,21 @@ router.post('/tickets', handleUpload, async (req: Request, res: Response) => {
 
     const validationErrors: { field: string; message: string }[] = [];
 
-    // 1. Validate requesterId
-    const parsedRequesterId = parseInt(requesterId, 10);
-    if (!requesterId || isNaN(parsedRequesterId)) {
+    // 1. Validate requesterId (derive from session token if present per BR-05)
+    let parsedRequesterId: number | undefined;
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const payload = verifyToken(authHeader.split(' ')[1]);
+      if (payload && payload.role === 'REQUESTER') {
+        parsedRequesterId = payload.id;
+      }
+    }
+
+    if (!parsedRequesterId) {
+      parsedRequesterId = parseInt(requesterId, 10);
+    }
+
+    if (!parsedRequesterId || isNaN(parsedRequesterId)) {
       validationErrors.push({ field: 'requesterId', message: 'Requester ID is required.' });
     } else {
       const requester = await prisma.user.findUnique({
