@@ -1,16 +1,26 @@
 import React, { useState, useEffect } from 'react';
 import { useRequester, type RequesterUser } from '../context/RequesterContext';
+import { useAuth } from '../context/AuthContext';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
 
 export const RequesterSelector: React.FC = () => {
   const { currentRequester, setRequester, isSelectorOpen, closeSelector } = useRequester();
+  let authUser = null;
+  try {
+    const auth = useAuth();
+    authUser = auth?.user;
+  } catch {}
+
   const [requesters, setRequesters] = useState<RequesterUser[]>([]);
   const [selectedId, setSelectedId] = useState<number | ''>(currentRequester?.id || '');
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string>('');
 
+  const isTestEnv = typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.MODE === 'test';
+
   const fetchRequesters = async () => {
+    if (authUser) return;
     setLoading(true);
     setError('');
     try {
@@ -31,17 +41,15 @@ export const RequesterSelector: React.FC = () => {
   };
 
   useEffect(() => {
-    if (isSelectorOpen) {
+    if (isSelectorOpen && !authUser) {
       fetchRequesters();
       if (currentRequester) {
         setSelectedId(currentRequester.id);
       }
     }
-  }, [isSelectorOpen]);
+  }, [isSelectorOpen, authUser]);
 
-  const isTestEnv = typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.MODE === 'test';
-
-  if (!isTestEnv || !isSelectorOpen) {
+  if (authUser || !isTestEnv || !isSelectorOpen) {
     return null;
   }
 

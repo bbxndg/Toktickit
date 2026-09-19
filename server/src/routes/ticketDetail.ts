@@ -127,7 +127,23 @@ const handleSingleUpload = (req: Request, res: Response, next: any) => {
 router.post('/tickets/:id/attachments', handleSingleUpload, async (req: Request, res: Response) => {
   try {
     const ticketId = parseInt(req.params.id as string, 10);
-    const requesterId = parseInt(req.body.requesterId, 10);
+
+    let authRequesterId: number | null = null;
+    let isStaffOrAdmin = false;
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const payload = verifyToken(authHeader.split(' ')[1]);
+      if (payload) {
+        if (payload.role === 'REQUESTER') {
+          authRequesterId = payload.id;
+        } else if (payload.role === 'IT_STAFF' || payload.role === 'ADMIN') {
+          isStaffOrAdmin = true;
+          authRequesterId = payload.id;
+        }
+      }
+    }
+
+    const requesterId = authRequesterId || parseInt(req.body.requesterId || (req.query.requesterId as string), 10);
 
     if (isNaN(ticketId)) {
       return res.status(400).json({
@@ -135,7 +151,7 @@ router.post('/tickets/:id/attachments', handleSingleUpload, async (req: Request,
       });
     }
 
-    if (!req.body.requesterId || isNaN(requesterId)) {
+    if (!requesterId || isNaN(requesterId)) {
       return res.status(400).json({
         error: {
           code: 'VALIDATION_ERROR',
@@ -171,7 +187,7 @@ router.post('/tickets/:id/attachments', handleSingleUpload, async (req: Request,
     }
 
     // Ownership enforcement
-    if (ticket.requesterId !== requesterId) {
+    if (!isStaffOrAdmin && ticket.requesterId !== requesterId) {
       return res.status(403).json({
         error: { code: 'FORBIDDEN', message: 'You do not have permission to modify this ticket.' },
       });
@@ -231,20 +247,30 @@ router.post('/tickets/:id/attachments', handleSingleUpload, async (req: Request,
 router.get('/attachments/:id/download', async (req: Request, res: Response) => {
   try {
     const attachmentId = parseInt(req.params.id as string, 10);
-    const requesterId = parseInt(req.query.requesterId as string, 10);
+
+    let authRequesterId: number | null = null;
+    let isStaffOrAdmin = false;
+    const token =
+      (req.headers.authorization?.startsWith('Bearer ')
+        ? req.headers.authorization.split(' ')[1]
+        : null) || (req.query.token as string);
+
+    if (token) {
+      const payload = verifyToken(token);
+      if (payload) {
+        if (payload.role === 'REQUESTER') {
+          authRequesterId = payload.id;
+        } else if (payload.role === 'IT_STAFF' || payload.role === 'ADMIN') {
+          isStaffOrAdmin = true;
+        }
+      }
+    }
+
+    const requesterId = authRequesterId || parseInt(req.query.requesterId as string, 10);
 
     if (isNaN(attachmentId)) {
       return res.status(400).json({
         error: { code: 'VALIDATION_ERROR', message: 'Invalid attachment ID.' },
-      });
-    }
-
-    if (!req.query.requesterId || isNaN(requesterId)) {
-      return res.status(400).json({
-        error: {
-          code: 'VALIDATION_ERROR',
-          message: 'requesterId is required for ownership verification.',
-        },
       });
     }
 
@@ -261,11 +287,22 @@ router.get('/attachments/:id/download', async (req: Request, res: Response) => {
       });
     }
 
-    // Ownership check
-    if (attachment.ticket.requesterId !== requesterId) {
-      return res.status(403).json({
-        error: { code: 'FORBIDDEN', message: 'You do not have permission to download this file.' },
-      });
+    // Ownership check for non-staff
+    if (!isStaffOrAdmin) {
+      if (!requesterId || isNaN(requesterId)) {
+        return res.status(400).json({
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'requesterId is required for ownership verification.',
+          },
+        });
+      }
+
+      if (attachment.ticket.requesterId !== requesterId) {
+        return res.status(403).json({
+          error: { code: 'FORBIDDEN', message: 'You do not have permission to download this file.' },
+        });
+      }
     }
 
     // Soft-removed files cannot be downloaded (BR-08)
@@ -302,12 +339,33 @@ router.get('/attachments/:id/download', async (req: Request, res: Response) => {
 });
 
 // ---------------------------------------------------------------------------
-// PATCH /api/attachments/:id/remove — Soft-remove attachment
+// PATCH/DELETE /api/attachments/:id/remove — Soft-remove attachment
 // ---------------------------------------------------------------------------
-router.patch('/attachments/:id/remove', async (req: Request, res: Response) => {
+const handleRemoveAttachment = async (req: Request, res: Response) => {
   try {
     const attachmentId = parseInt(req.params.id as string, 10);
-    const { requesterId, removalReason } = req.body;
+    const { requesterId, reason, removalReason } = req.body || {};
+    const effectiveReason = removalReason || reason;
+
+    let authRequesterId: number | null = null;
+    let isStaffOrAdmin = false;
+    const token =
+      (req.headers.authorization?.startsWith('Bearer ')
+        ? req.headers.authorization.split(' ')[1]
+        : null) || (req.query.token as string);
+
+    if (token) {
+      const payload = verifyToken(token);
+      if (payload) {
+        if (payload.role === 'REQUESTER') {
+          authRequesterId = payload.id;
+        } else if (payload.role === 'IT_STAFF' || payload.role === 'ADMIN') {
+          isStaffOrAdmin = true;
+        }
+      }
+    }
+
+    const parsedRequesterId = authRequesterId || parseInt(requesterId || (req.query.requesterId as string), 10);
 
     if (isNaN(attachmentId)) {
       return res.status(400).json({
@@ -315,8 +373,7 @@ router.patch('/attachments/:id/remove', async (req: Request, res: Response) => {
       });
     }
 
-    const parsedRequesterId = parseInt(requesterId, 10);
-    if (!requesterId || isNaN(parsedRequesterId)) {
+    if (!isStaffOrAdmin && (!parsedRequesterId || isNaN(parsedRequesterId))) {
       return res.status(400).json({
         error: {
           code: 'VALIDATION_ERROR',
@@ -327,7 +384,7 @@ router.patch('/attachments/:id/remove', async (req: Request, res: Response) => {
     }
 
     // Validate removalReason (BR-07)
-    if (!removalReason || typeof removalReason !== 'string' || removalReason.trim().length < 3) {
+    if (!effectiveReason || typeof effectiveReason !== 'string' || effectiveReason.trim().length < 3) {
       return res.status(400).json({
         error: {
           code: 'VALIDATION_ERROR',
@@ -351,7 +408,7 @@ router.patch('/attachments/:id/remove', async (req: Request, res: Response) => {
     }
 
     // Ownership check (BR-04)
-    if (attachment.ticket.requesterId !== parsedRequesterId) {
+    if (!isStaffOrAdmin && attachment.ticket.requesterId !== parsedRequesterId) {
       return res.status(403).json({
         error: { code: 'FORBIDDEN', message: 'You do not have permission to remove this attachment.' },
       });
@@ -371,7 +428,7 @@ router.patch('/attachments/:id/remove', async (req: Request, res: Response) => {
         data: {
           isRemoved: true,
           removedAt: new Date(),
-          removalReason: removalReason.trim(),
+          removalReason: effectiveReason.trim(),
         },
       }),
       prisma.ticket.update({
@@ -394,6 +451,11 @@ router.patch('/attachments/:id/remove', async (req: Request, res: Response) => {
       error: { code: 'INTERNAL_ERROR', message: 'Failed to remove attachment.' },
     });
   }
-});
+};
+
+router.patch('/attachments/:id/remove', handleRemoveAttachment);
+router.patch('/attachments/:id', handleRemoveAttachment);
+router.delete('/attachments/:id/remove', handleRemoveAttachment);
+router.delete('/attachments/:id', handleRemoveAttachment);
 
 export default router;
