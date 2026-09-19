@@ -726,14 +726,20 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({ ticketId, onBack }) 
               <small className="text-muted" style={{ fontSize: '0.7rem' }}>
                 {newComment.length} / 2,000 characters
               </small>
-              <button
-                type="submit"
-                className="btn btn-success btn-sm px-3"
-                disabled={postingComment || newComment.trim().length < 2}
-                data-testid="post-comment-btn"
+              <span
+                className="d-inline-block"
+                tabIndex={0}
+                title={newComment.trim().length < 2 ? 'Comment must be between 2 and 2,000 characters' : 'Post Public Comment'}
               >
-                {postingComment ? 'Posting...' : '📨 Post Public Comment'}
-              </button>
+                <button
+                  type="submit"
+                  className="btn btn-success btn-sm px-3"
+                  disabled={postingComment || newComment.trim().length < 2}
+                  data-testid="post-comment-btn"
+                >
+                  {postingComment ? 'Posting...' : '📨 Post Public Comment'}
+                </button>
+              </span>
             </div>
           </div>
         </form>

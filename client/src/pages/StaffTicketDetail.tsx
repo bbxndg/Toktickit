@@ -855,14 +855,20 @@ export const StaffTicketDetail: React.FC<StaffTicketDetailProps> = ({ ticketId, 
                         <small className="text-muted" style={{ fontSize: '0.7rem' }}>
                           {newComment.length} / 2,000 characters
                         </small>
-                        <button
-                          type="submit"
-                          className="btn btn-success btn-sm px-3"
-                          disabled={postingComment || newComment.trim().length < 2}
-                          data-testid="submit-public-comment-btn"
+                        <span
+                          className="d-inline-block"
+                          tabIndex={0}
+                          title={newComment.trim().length < 2 ? 'Comment must be between 2 and 2,000 characters' : 'Post Public Comment'}
                         >
-                          {postingComment ? 'Posting...' : '📨 Post Public Comment'}
-                        </button>
+                          <button
+                            type="submit"
+                            className="btn btn-success btn-sm px-3"
+                            disabled={postingComment || newComment.trim().length < 2}
+                            data-testid="submit-public-comment-btn"
+                          >
+                            {postingComment ? 'Posting...' : '📨 Post Public Comment'}
+                          </button>
+                        </span>
                       </div>
                     </div>
                   </form>
@@ -938,14 +944,20 @@ export const StaffTicketDetail: React.FC<StaffTicketDetailProps> = ({ ticketId, 
                         <small className="text-muted" style={{ fontSize: '0.7rem' }}>
                           {newNote.length} / 2,000 characters
                         </small>
-                        <button
-                          type="submit"
-                          className="btn btn-warning text-dark btn-sm px-3 fw-bold"
-                          disabled={postingNote || newNote.trim().length < 2}
-                          data-testid="submit-internal-note-btn"
+                        <span
+                          className="d-inline-block"
+                          tabIndex={0}
+                          title={newNote.trim().length < 2 ? 'Note must be between 2 and 2,000 characters' : 'Save Internal Note'}
                         >
-                          {postingNote ? 'Saving...' : '🔒 Save Internal Note'}
-                        </button>
+                          <button
+                            type="submit"
+                            className="btn btn-warning text-dark btn-sm px-3 fw-bold"
+                            disabled={postingNote || newNote.trim().length < 2}
+                            data-testid="submit-internal-note-btn"
+                          >
+                            {postingNote ? 'Saving...' : '🔒 Save Internal Note'}
+                          </button>
+                        </span>
                       </div>
                     </div>
                   </form>
