@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRequester } from '../context/RequesterContext';
+import { useAuth } from '../context/AuthContext';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
 
@@ -12,6 +13,20 @@ interface AttachmentItem {
   removedAt: string | null;
   removalReason: string | null;
   createdAt: string;
+}
+
+interface CommentItem {
+  id: number;
+  ticketId: number;
+  content: string;
+  createdAt: string;
+  author: {
+    id: number;
+    name: string;
+    email: string;
+    role: string;
+    department?: string;
+  };
 }
 
 interface TicketDetail {
@@ -38,6 +53,11 @@ interface TicketDetailProps {
 
 export const TicketDetail: React.FC<TicketDetailProps> = ({ ticketId, onBack }) => {
   const { currentRequester } = useRequester();
+  let auth: any = null;
+  try {
+    auth = useAuth();
+  } catch {}
+  const token = auth?.token;
 
   const [ticket, setTicket] = useState<TicketDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -54,14 +74,32 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({ ticketId, onBack }) 
   const [addingAttachment, setAddingAttachment] = useState(false);
   const [addAttachError, setAddAttachError] = useState('');
 
+  // Public Comments State
+  const [comments, setComments] = useState<CommentItem[]>([]);
+  const [loadingComments, setLoadingComments] = useState(false);
+  const [newComment, setNewComment] = useState('');
+  const [postingComment, setPostingComment] = useState(false);
+  const [commentError, setCommentError] = useState('');
+
+  // Problem Appears Resolved State
+  const [resolveModalOpen, setResolveModalOpen] = useState(false);
+  const [resolving, setResolving] = useState(false);
+  const [resolveError, setResolveError] = useState('');
+  const [resolveSuccessMsg, setResolveSuccessMsg] = useState('');
+
   const fetchTicket = useCallback(async () => {
-    if (!currentRequester) return;
+    if (!currentRequester && !token) return;
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(
-        `${API_BASE}/api/tickets/${ticketId}?requesterId=${currentRequester.id}`
-      );
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const queryParam = currentRequester ? `?requesterId=${currentRequester.id}` : '';
+      const res = await fetch(`${API_BASE}/api/tickets/${ticketId}${queryParam}`, {
+        headers,
+      });
+
       if (!res.ok) {
         const data = await res.json();
         setError(data.error?.message || `Error ${res.status}`);
@@ -75,11 +113,103 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({ ticketId, onBack }) 
     } finally {
       setLoading(false);
     }
-  }, [ticketId, currentRequester]);
+  }, [ticketId, currentRequester, token]);
+
+  const fetchComments = useCallback(async () => {
+    try {
+      setLoadingComments(true);
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch(`${API_BASE}/api/tickets/${ticketId}/comments`, {
+        headers,
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setComments(Array.isArray(data) ? data : []);
+      } else {
+        setComments([]);
+      }
+    } catch (err) {
+      setComments([]);
+    } finally {
+      setLoadingComments(false);
+    }
+  }, [ticketId, token]);
 
   useEffect(() => {
     fetchTicket();
-  }, [fetchTicket]);
+    if (token) {
+      fetchComments();
+    }
+  }, [fetchTicket, fetchComments, token]);
+
+  // ── Post Public Comment ──────────────────────────────────────────────────
+  const handlePostComment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = newComment.trim();
+    if (trimmed.length < 2 || trimmed.length > 2000) {
+      setCommentError('Comment must be between 2 and 2,000 characters.');
+      return;
+    }
+    setCommentError('');
+    setPostingComment(true);
+
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch(`${API_BASE}/api/tickets/${ticketId}/comments`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ content: trimmed }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error?.message || 'Failed to post comment.');
+      }
+
+      const created = await res.json();
+      setComments((prev) => [...prev, created]);
+      setNewComment('');
+    } catch (err: any) {
+      setCommentError(err.message || 'Failed to post comment.');
+    } finally {
+      setPostingComment(false);
+    }
+  };
+
+  // ── Problem Appears Resolved (BR-11) ─────────────────────────────────────
+  const handleIndicateResolved = async () => {
+    setResolving(true);
+    setResolveError('');
+    try {
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch(`${API_BASE}/api/tickets/${ticketId}/indicate-resolved`, {
+        method: 'PATCH',
+        headers,
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error?.message || 'Failed to indicate resolution.');
+      }
+
+      const updated = await res.json();
+      setTicket((prev) => (prev ? { ...prev, status: updated.status } : null));
+      setResolveModalOpen(false);
+      setResolveSuccessMsg('Thank you! Your ticket status has been updated to Resolved.');
+      setTimeout(() => setResolveSuccessMsg(''), 5000);
+    } catch (err: any) {
+      setResolveError(err.message || 'Failed to update ticket status.');
+    } finally {
+      setResolving(false);
+    }
+  };
 
   // ── Priority Badge ───────────────────────────────────────────────────────
   const renderPriorityBadge = (prio: string | null) => {
@@ -98,30 +228,37 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({ ticketId, onBack }) 
     let cls = 'badge-zg-status-new';
     if (s === 'OPEN') cls = 'badge bg-info text-dark';
     if (s === 'IN_PROGRESS') cls = 'badge-zg-status-inprogress';
+    if (s === 'WAITING_FOR_REQUESTER') cls = 'badge bg-secondary text-white';
     if (s === 'RESOLVED') cls = 'badge-zg-status-resolved';
-    if (s === 'CLOSED') cls = 'badge bg-secondary';
-    return <span className={`badge ${cls} px-2 py-1`}>{st.replace('_', ' ')}</span>;
+    if (s === 'CLOSED') cls = 'badge-zg-status-closed';
+    if (s === 'CANCELLED') cls = 'badge bg-danger text-white';
+    if (s === 'REOPENED') cls = 'badge bg-warning text-dark';
+    return <span className={`badge ${cls} px-2 py-1`}>{st.replace(/_/g, ' ')}</span>;
   };
 
-  // ── Format date ──────────────────────────────────────────────────────────
+  // ── Date Formatter ────────────────────────────────────────────────────────
   const fmt = (iso: string) => {
     try {
-      return new Intl.DateTimeFormat('en-US', {
-        month: 'short', day: 'numeric', year: 'numeric',
-        hour: 'numeric', minute: 'numeric', hour12: true,
-      }).format(new Date(iso));
-    } catch { return iso; }
-  };
-
-  // ── Format file size (KB / MB) ───────────────────────────────────────────
-  const formatFileSize = (bytes: number) => {
-    if (bytes >= 1024 * 1024) {
-      return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+      const d = new Date(iso);
+      return d.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    } catch {
+      return iso;
     }
-    return `${(bytes / 1024).toFixed(1)} KB`;
   };
 
-  // ── Soft Remove Handler ──────────────────────────────────────────────────
+  const formatFileSize = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  // ── Soft Removal Modal Handlers ──────────────────────────────────────────
   const openRemoveModal = (att: AttachmentItem) => {
     setRemovalTarget(att);
     setRemovalReason('');
@@ -130,28 +267,34 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({ ticketId, onBack }) 
   };
 
   const closeRemoveModal = () => {
+    if (removing) return;
     setRemoveModalOpen(false);
     setRemovalTarget(null);
     setRemovalReason('');
     setRemovalReasonError('');
   };
 
-  const handleRemove = async () => {
-    if (!removalTarget || !currentRequester) return;
-
-    const trimmed = removalReason.trim();
-    if (trimmed.length < 3) {
+  const handleConfirmRemove = async () => {
+    if (removalReason.trim().length < 3) {
       setRemovalReasonError('Removal reason must be at least 3 characters.');
       return;
     }
+    if (!removalTarget || !currentRequester) return;
 
     setRemoving(true);
+    setRemovalReasonError('');
     try {
-      const res = await fetch(`${API_BASE}/api/attachments/${removalTarget.id}/remove`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ requesterId: currentRequester.id, removalReason: trimmed }),
-      });
+      const res = await fetch(
+        `${API_BASE}/api/attachments/${removalTarget.id}?requesterId=${currentRequester.id}`,
+        {
+          method: 'DELETE',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({ reason: removalReason.trim() }),
+        }
+      );
 
       if (!res.ok) {
         const data = await res.json();
@@ -159,43 +302,66 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({ ticketId, onBack }) 
         return;
       }
 
+      await fetchTicket();
       closeRemoveModal();
-      fetchTicket(); // Refresh ticket data
-    } catch {
-      setRemovalReasonError('Network error. Please try again.');
+    } catch (err: any) {
+      setRemovalReasonError('Network error: Could not remove attachment.');
     } finally {
       setRemoving(false);
     }
   };
 
   // ── Add Attachment Handler ───────────────────────────────────────────────
-  const handleAddAttachment = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files || !e.target.files[0] || !currentRequester) return;
-    const file = e.target.files[0];
+  const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+  const ALLOWED_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp', '.pdf'];
+  const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
 
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
-    if (!allowedTypes.includes(file.type.toLowerCase())) {
-      setAddAttachError(`Invalid file type. Only JPG, PNG, WEBP, and PDF are allowed.`);
+  const handleAddAttachment = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !currentRequester) return;
+
+    setAddAttachError('');
+
+    // Check 5 active limit
+    const activeCount = ticket?.attachments?.filter((a) => !a.isRemoved).length || 0;
+    if (activeCount >= 5) {
+      setAddAttachError('Maximum limit of 5 active attachments reached.');
       e.target.value = '';
       return;
     }
-    if (file.size > 5 * 1024 * 1024) {
-      setAddAttachError(`File "${file.name}" exceeds the 5 MB limit.`);
+
+    // Client-side file type validation
+    const ext = '.' + file.name.split('.').pop()?.toLowerCase();
+    const isMimeValid = ALLOWED_MIME_TYPES.includes(file.type);
+    const isExtValid = ALLOWED_EXTENSIONS.includes(ext);
+
+    if (!isMimeValid && !isExtValid) {
+      setAddAttachError('Invalid file type. Only JPG, PNG, WEBP, and PDF are allowed.');
+      e.target.value = '';
+      return;
+    }
+
+    // Client-side file size validation
+    if (file.size > MAX_FILE_SIZE) {
+      setAddAttachError('File size exceeds the 5 MB limit.');
       e.target.value = '';
       return;
     }
 
     setAddingAttachment(true);
-    setAddAttachError('');
-    try {
-      const formData = new FormData();
-      formData.append('requesterId', String(currentRequester.id));
-      formData.append('file', file);
 
-      const res = await fetch(`${API_BASE}/api/tickets/${ticketId}/attachments`, {
-        method: 'POST',
-        body: formData,
-      });
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/tickets/${ticketId}/attachments?requesterId=${currentRequester.id}`,
+        {
+          method: 'POST',
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          body: formData,
+        }
+      );
 
       if (!res.ok) {
         const data = await res.json();
@@ -203,11 +369,11 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({ ticketId, onBack }) 
         return;
       }
 
-      fetchTicket(); // Refresh to show new attachment
-    } catch {
-      setAddAttachError('Network error. Please try again.');
-    } finally {
+      await fetchTicket();
       e.target.value = '';
+    } catch (err: any) {
+      setAddAttachError('Network error: Could not upload attachment.');
+    } finally {
       setAddingAttachment(false);
     }
   };
@@ -215,11 +381,11 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({ ticketId, onBack }) 
   // ── Render: Loading ──────────────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="zg-card p-5 text-center shadow-sm">
+      <div className="container py-5 text-center" data-testid="ticket-detail-loading">
         <div className="spinner-border text-success" role="status">
-          <span className="visually-hidden">Loading...</span>
+          <span className="visually-hidden">Loading ticket...</span>
         </div>
-        <p className="mt-2 text-muted small">Loading ticket details...</p>
+        <p className="mt-2 text-muted">Loading ticket details...</p>
       </div>
     );
   }
@@ -244,7 +410,7 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({ ticketId, onBack }) 
 
   // ── Render: Main ─────────────────────────────────────────────────────────
   return (
-    <div className="container py-2" style={{ maxWidth: '900px' }}>
+    <div className="container py-2" style={{ maxWidth: '900px' }} data-testid="requester-ticket-detail-container">
       {/* Header Row */}
       <div className="d-flex flex-column flex-sm-row justify-content-between align-items-start align-items-sm-center gap-2 mb-3">
         <div>
@@ -253,10 +419,31 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({ ticketId, onBack }) 
           </h2>
           <p className="text-muted small mb-0">Read-only view of your submitted ticket.</p>
         </div>
-        <button type="button" className="btn btn-sm btn-zg-secondary text-nowrap" onClick={onBack}>
-          ← Back to My Tickets
-        </button>
+        <div className="d-flex align-items-center gap-2">
+          {/* Problem Appears Resolved Action Button (BR-11, FR-08) */}
+          {(ticket.status === 'IN_PROGRESS' || ticket.status === 'WAITING_FOR_REQUESTER') && (
+            <button
+              type="button"
+              className="btn btn-sm btn-success text-nowrap fw-bold"
+              onClick={() => setResolveModalOpen(true)}
+              data-testid="indicate-resolved-btn"
+            >
+              ✅ Problem Appears Resolved
+            </button>
+          )}
+          <button type="button" className="btn btn-sm btn-zg-secondary text-nowrap" onClick={onBack}>
+            ← Back to My Tickets
+          </button>
+        </div>
       </div>
+
+      {/* Success Toast / Notification */}
+      {resolveSuccessMsg && (
+        <div className="alert alert-success py-2 small mb-3 shadow-sm d-flex justify-content-between align-items-center" role="alert">
+          <span>{resolveSuccessMsg}</span>
+          <button type="button" className="btn-close btn-sm" onClick={() => setResolveSuccessMsg('')}></button>
+        </div>
+      )}
 
       {/* Ticket Header Card (Read-Only) */}
       <div className="zg-card p-3 p-md-4 shadow-sm mb-4">
@@ -461,59 +648,143 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({ ticketId, onBack }) 
         )}
       </div>
 
-      {/* ── Soft Remove Modal ─────────────────────────────────────────────── */}
+      {/* Public Comments Section (AC-08, BR-12) */}
+      <div className="zg-card p-4 shadow-sm mb-4" data-testid="public-comments-section">
+        <div className="d-flex justify-content-between align-items-center mb-3">
+          <h5 className="fw-bold mb-0 text-success">
+            💬 Conversation with IT Support
+            <span className="badge bg-secondary ms-2 fw-normal" style={{ fontSize: '0.75rem' }}>
+              {Array.isArray(comments) ? comments.length : 0}
+            </span>
+          </h5>
+          <small className="text-muted" style={{ fontSize: '0.75rem' }}>Public conversation</small>
+        </div>
+
+        {loadingComments ? (
+          <div className="py-3 text-center text-muted small">Loading conversation...</div>
+        ) : !Array.isArray(comments) || comments.length === 0 ? (
+          <p className="text-muted small py-2 mb-3">No messages yet. Send a message to IT support below.</p>
+        ) : (
+          <div className="comment-list mb-3" style={{ maxHeight: '350px', overflowY: 'auto' }}>
+            {comments.map((c) => (
+              <div
+                key={c.id}
+                className="card border-0 bg-light p-3 mb-2 rounded"
+                data-testid={`public-comment-item-${c.id}`}
+              >
+                <div className="d-flex justify-content-between align-items-center mb-1">
+                  <div>
+                    <strong className="small text-dark">{c.author.name}</strong>
+                    <span
+                      className={`badge ms-1 ${
+                        c.author.role === 'ADMINISTRATOR'
+                          ? 'bg-danger'
+                          : c.author.role === 'IT_STAFF'
+                          ? 'bg-primary'
+                          : 'bg-secondary'
+                      }`}
+                      style={{ fontSize: '0.65rem' }}
+                    >
+                      {c.author.role === 'ADMINISTRATOR' ? 'Admin' : c.author.role === 'IT_STAFF' ? 'IT Staff' : 'Requester'}
+                    </span>
+                  </div>
+                  <small className="text-muted" style={{ fontSize: '0.7rem' }}>
+                    {fmt(c.createdAt)}
+                  </small>
+                </div>
+                <p className="small mb-0 text-dark" style={{ whiteSpace: 'pre-wrap' }}>
+                  {c.content}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Post Comment Input */}
+        <form onSubmit={handlePostComment} className="pt-2 border-top">
+          {commentError && (
+            <div className="alert alert-danger py-1 small mb-2">{commentError}</div>
+          )}
+          <div className="mb-2">
+            <textarea
+              className="form-control form-control-sm"
+              rows={3}
+              placeholder="Type your message or reply to IT Staff..."
+              value={newComment}
+              onChange={(e) => setNewComment(e.target.value)}
+              disabled={postingComment}
+              maxLength={2000}
+              data-testid="requester-comment-input"
+            ></textarea>
+            <div className="d-flex justify-content-between align-items-center mt-2">
+              <small className="text-muted" style={{ fontSize: '0.7rem' }}>
+                {newComment.length} / 2,000 characters
+              </small>
+              <button
+                type="submit"
+                className="btn btn-success btn-sm px-3"
+                disabled={postingComment || newComment.trim().length < 2}
+                data-testid="post-comment-btn"
+              >
+                {postingComment ? 'Posting...' : '📨 Post Public Comment'}
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+
+      {/* Soft-Removal Confirmation Modal */}
       {removeModalOpen && removalTarget && (
         <div
-          className="modal d-block"
+          className="modal show d-block"
           tabIndex={-1}
-          style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}
+          role="dialog"
+          style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}
           data-testid="remove-modal"
         >
           <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content border-0 shadow">
-              <div className="modal-header border-0">
-                <h5 className="modal-title fw-bold" style={{ color: 'var(--zg-text-primary)' }}>
-                  Remove Attachment
-                </h5>
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title fw-bold text-danger">Remove Attachment</h5>
                 <button
                   type="button"
                   className="btn-close"
                   onClick={closeRemoveModal}
                   disabled={removing}
-                  aria-label="Close"
                 />
               </div>
               <div className="modal-body">
-                <p className="text-muted mb-3">
-                  You are about to remove{' '}
-                  <strong>{removalTarget.originalName}</strong>. This action cannot be undone — the
-                  file metadata will be preserved in the history for audit purposes.
+                <p className="small text-muted mb-2">
+                  You are about to remove <strong>{removalTarget.originalName}</strong>. Please provide a reason for removal.
                 </p>
-                <label htmlFor="removal-reason-input" className="zg-label">
-                  Removal Reason <span className="text-danger">*</span>
-                </label>
-                <textarea
-                  id="removal-reason-input"
-                  rows={3}
-                  className={`form-control zg-input ${removalReasonError ? 'is-invalid' : ''}`}
-                  placeholder="Explain why this attachment is being removed..."
-                  value={removalReason}
-                  onChange={(e) => {
-                    setRemovalReason(e.target.value);
-                    if (removalReasonError) setRemovalReasonError('');
-                  }}
-                  data-testid="removal-reason-input"
-                />
-                {removalReasonError && (
-                  <span className="zg-error-text" data-testid="removal-reason-error">
-                    {removalReasonError}
-                  </span>
-                )}
+                <div className="mb-3">
+                  <label htmlFor="removal-reason" className="form-label small fw-semibold">
+                    Removal Reason <span className="text-danger">*</span>
+                  </label>
+                  <textarea
+                    id="removal-reason"
+                    data-testid="removal-reason-input"
+                    className={`form-control ${removalReasonError ? 'is-invalid' : ''}`}
+                    rows={3}
+                    placeholder="E.g., File contains sensitive information or was uploaded in error"
+                    value={removalReason}
+                    onChange={(e) => {
+                      setRemovalReason(e.target.value);
+                      if (removalReasonError) setRemovalReasonError('');
+                    }}
+                    disabled={removing}
+                  />
+                  {removalReasonError && (
+                    <div className="invalid-feedback d-block" data-testid="removal-reason-error">
+                      {removalReasonError}
+                    </div>
+                  )}
+                </div>
               </div>
-              <div className="modal-footer border-0">
+              <div className="modal-footer">
                 <button
                   type="button"
-                  className="btn btn-zg-secondary"
+                  className="btn btn-sm btn-outline-secondary"
                   onClick={closeRemoveModal}
                   disabled={removing}
                   data-testid="cancel-remove-btn"
@@ -522,16 +793,70 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({ ticketId, onBack }) 
                 </button>
                 <button
                   type="button"
-                  className="btn btn-danger"
-                  onClick={handleRemove}
+                  className="btn btn-sm btn-danger"
+                  onClick={handleConfirmRemove}
                   disabled={removing}
                   data-testid="confirm-remove-btn"
                 >
-                  {removing ? (
-                    <><span className="spinner-border spinner-border-sm me-1" role="status" />Removing...</>
-                  ) : (
-                    'Confirm Remove'
-                  )}
+                  {removing ? 'Removing...' : 'Confirm Removal'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Problem Appears Resolved Confirmation Modal */}
+      {resolveModalOpen && (
+        <div
+          className="modal show d-block"
+          tabIndex={-1}
+          role="dialog"
+          style={{ backgroundColor: 'rgba(0, 0, 0, 0.6)', backdropFilter: 'blur(3px)' }}
+          data-testid="confirm-resolve-modal"
+        >
+          <div className="modal-dialog modal-dialog-centered">
+            <div className="modal-content border-0 shadow">
+              <div className="modal-header">
+                <h5 className="modal-title fw-bold text-success">
+                  ✅ Confirm Issue Resolution
+                </h5>
+                <button
+                  type="button"
+                  className="btn-close"
+                  onClick={() => setResolveModalOpen(false)}
+                  disabled={resolving}
+                ></button>
+              </div>
+              <div className="modal-body py-3">
+                <p className="small mb-2">
+                  Are you sure your issue has been resolved?
+                </p>
+                <p className="small text-muted mb-0">
+                  This will transition ticket <strong>#{ticket.ticketNumber}</strong> to <strong>Resolved</strong> status and notify the IT support team.
+                </p>
+                {resolveError && (
+                  <div className="alert alert-danger py-2 small mt-3 mb-0">{resolveError}</div>
+                )}
+              </div>
+              <div className="modal-footer border-top-0 d-flex justify-content-between">
+                <button
+                  type="button"
+                  className="btn btn-outline-secondary btn-sm"
+                  onClick={() => setResolveModalOpen(false)}
+                  disabled={resolving}
+                  data-testid="cancel-resolve-btn"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-success btn-sm fw-bold px-3"
+                  onClick={handleIndicateResolved}
+                  disabled={resolving}
+                  data-testid="confirm-resolve-btn"
+                >
+                  {resolving ? 'Updating...' : 'Yes, Problem Is Resolved'}
                 </button>
               </div>
             </div>

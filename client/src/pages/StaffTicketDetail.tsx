@@ -21,6 +21,34 @@ interface AttachmentItem {
   createdAt: string;
 }
 
+interface CommentItem {
+  id: number;
+  ticketId: number;
+  content: string;
+  createdAt: string;
+  author: {
+    id: number;
+    name: string;
+    email: string;
+    role: string;
+    department?: string;
+  };
+}
+
+interface NoteItem {
+  id: number;
+  ticketId: number;
+  content: string;
+  createdAt: string;
+  author: {
+    id: number;
+    name: string;
+    email: string;
+    role: string;
+    department?: string;
+  };
+}
+
 interface TicketDetailData {
   id: number;
   ticketNumber: string;
@@ -80,8 +108,20 @@ export const StaffTicketDetail: React.FC<StaffTicketDetailProps> = ({ ticketId, 
   const [terminalReason, setTerminalReason] = useState<string>('');
   const [isConfirmingTerminal, setIsConfirmingTerminal] = useState(false);
 
-  // Active Tab: comments, notes, attachments
-  const [activeTab, setActiveTab] = useState<'comments' | 'notes' | 'attachments'>('attachments');
+  // Active Tab: attachments, comments, notes
+  const [activeTab, setActiveTab] = useState<'attachments' | 'comments' | 'notes'>('attachments');
+
+  // Collaboration state
+  const [comments, setComments] = useState<CommentItem[]>([]);
+  const [notes, setNotes] = useState<NoteItem[]>([]);
+  const [loadingComments, setLoadingComments] = useState(false);
+  const [loadingNotes, setLoadingNotes] = useState(false);
+  const [newComment, setNewComment] = useState('');
+  const [newNote, setNewNote] = useState('');
+  const [postingComment, setPostingComment] = useState(false);
+  const [postingNote, setPostingNote] = useState(false);
+  const [commentError, setCommentError] = useState('');
+  const [noteError, setNoteError] = useState('');
 
   // Load ticket details
   const fetchTicket = useCallback(async () => {
@@ -109,7 +149,47 @@ export const StaffTicketDetail: React.FC<StaffTicketDetailProps> = ({ ticketId, 
     }
   }, [ticketId, token]);
 
-  // Load staff members for assignment
+  // Fetch comments
+  const fetchComments = useCallback(async () => {
+    try {
+      setLoadingComments(true);
+      const res = await fetch(`${API_BASE}/api/tickets/${ticketId}/comments`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setComments(Array.isArray(data) ? data : []);
+      } else {
+        setComments([]);
+      }
+    } catch (err) {
+      setComments([]);
+    } finally {
+      setLoadingComments(false);
+    }
+  }, [ticketId, token]);
+
+  // Fetch internal notes
+  const fetchNotes = useCallback(async () => {
+    try {
+      setLoadingNotes(true);
+      const res = await fetch(`${API_BASE}/api/tickets/${ticketId}/notes`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setNotes(Array.isArray(data) ? data : []);
+      } else {
+        setNotes([]);
+      }
+    } catch (err) {
+      setNotes([]);
+    } finally {
+      setLoadingNotes(false);
+    }
+  }, [ticketId, token]);
+
+  // Load initial data
   useEffect(() => {
     const fetchStaff = async () => {
       try {
@@ -127,7 +207,9 @@ export const StaffTicketDetail: React.FC<StaffTicketDetailProps> = ({ ticketId, 
 
     fetchStaff();
     fetchTicket();
-  }, [fetchTicket, token]);
+    fetchComments();
+    fetchNotes();
+  }, [fetchTicket, fetchComments, fetchNotes, token]);
 
   const showToast = (type: 'success' | 'danger', text: string) => {
     setOperationMsg({ type, text });
@@ -161,7 +243,7 @@ export const StaffTicketDetail: React.FC<StaffTicketDetailProps> = ({ ticketId, 
     }
   };
 
-  // Reassign Ticket Owner
+  // Reassign Owner
   const handleAssignOwner = async (newOwnerId: string) => {
     if (!ticket) return;
     try {
@@ -245,34 +327,93 @@ export const StaffTicketDetail: React.FC<StaffTicketDetailProps> = ({ ticketId, 
 
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.error?.message || 'Status transition not allowed.');
+        throw new Error(data.error?.message || 'Status transition failed.');
       }
 
       const updated = await res.json();
       setTicket((prev) => (prev ? { ...prev, status: updated.status } : null));
       setSelectedStatus(updated.status);
+      setIsConfirmingTerminal(false);
+      setPendingStatus(null);
       showToast('success', `Ticket status updated to ${updated.status}.`);
     } catch (err: any) {
       showToast('danger', err.message);
       setSelectedStatus(ticket.status);
-    } finally {
       setIsConfirmingTerminal(false);
       setPendingStatus(null);
     }
   };
 
-  const formatDate = (iso: string) => {
-    if (!iso) return '—';
-    const d = new Date(iso);
-    return isNaN(d.getTime())
-      ? '—'
-      : d.toLocaleDateString('en-US', {
-          month: 'short',
-          day: 'numeric',
-          year: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit',
-        });
+  // Post Public Comment
+  const handlePostComment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = newComment.trim();
+    if (trimmed.length < 2 || trimmed.length > 2000) {
+      setCommentError('Comment must be between 2 and 2,000 characters.');
+      return;
+    }
+    setCommentError('');
+    setPostingComment(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/tickets/${ticketId}/comments`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ content: trimmed }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error?.message || 'Failed to post comment.');
+      }
+
+      const created = await res.json();
+      setComments((prev) => [...prev, created]);
+      setNewComment('');
+      showToast('success', 'Public comment posted successfully.');
+    } catch (err: any) {
+      setCommentError(err.message || 'Failed to post comment.');
+    } finally {
+      setPostingComment(false);
+    }
+  };
+
+  // Save Internal Note
+  const handlePostNote = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = newNote.trim();
+    if (trimmed.length < 2 || trimmed.length > 2000) {
+      setNoteError('Internal note must be between 2 and 2,000 characters.');
+      return;
+    }
+    setNoteError('');
+    setPostingNote(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/tickets/${ticketId}/notes`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ content: trimmed }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error?.message || 'Failed to save internal note.');
+      }
+
+      const created = await res.json();
+      setNotes((prev) => [...prev, created]);
+      setNewNote('');
+      showToast('success', 'Internal note saved securely.');
+    } catch (err: any) {
+      setNoteError(err.message || 'Failed to save internal note.');
+    } finally {
+      setPostingNote(false);
+    }
   };
 
   const formatFileSize = (bytes: number) => {
@@ -281,38 +422,90 @@ export const StaffTicketDetail: React.FC<StaffTicketDetailProps> = ({ ticketId, 
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
+  const formatDate = (iso: string) => {
+    try {
+      const d = new Date(iso);
+      return d.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    } catch {
+      return iso;
+    }
+  };
+
+  const renderStatusBadge = (st: string) => {
+    const s = st.toUpperCase();
+    let bg = 'bg-secondary';
+    if (s === 'NEW') bg = 'bg-primary';
+    if (s === 'OPEN') bg = 'bg-info text-dark';
+    if (s === 'IN_PROGRESS') bg = 'bg-warning text-dark';
+    if (s === 'WAITING_FOR_REQUESTER') bg = 'bg-secondary text-white';
+    if (s === 'RESOLVED') bg = 'bg-success text-white';
+    if (s === 'CLOSED') bg = 'bg-dark text-white';
+    if (s === 'CANCELLED') bg = 'bg-danger text-white';
+    if (s === 'REOPENED') bg = 'bg-warning text-dark';
+
+    return <span className={`badge ${bg} px-2 py-1`}>{st.replace(/_/g, ' ')}</span>;
+  };
+
+  const renderPriorityBadge = (prio: string | null) => {
+    if (!prio) return <span className="text-muted small">—</span>;
+    const p = prio.toUpperCase();
+    let cls = 'bg-secondary';
+    if (p === 'LOW') cls = 'bg-secondary';
+    if (p === 'MEDIUM') cls = 'bg-info text-dark';
+    if (p === 'HIGH') cls = 'bg-warning text-dark';
+    if (p === 'CRITICAL') cls = 'bg-danger';
+
+    return <span className={`badge ${cls} px-2 py-1`}>{prio}</span>;
+  };
+
+  const renderRoleBadge = (role: string) => {
+    if (role === 'ADMINISTRATOR') {
+      return <span className="badge bg-danger ms-1" style={{ fontSize: '0.65rem' }}>Admin</span>;
+    }
+    if (role === 'IT_STAFF') {
+      return <span className="badge bg-primary ms-1" style={{ fontSize: '0.65rem' }}>IT Staff</span>;
+    }
+    return <span className="badge bg-secondary ms-1" style={{ fontSize: '0.65rem' }}>Requester</span>;
+  };
+
   if (loading) {
     return (
-      <div className="container py-5 text-center" data-testid="staff-detail-loading">
-        <div className="spinner-border text-success" role="status">
-          <span className="visually-hidden">Loading ticket details...</span>
-        </div>
-        <p className="mt-2 text-muted small">Loading ticket details...</p>
+      <div className="py-5 text-center text-muted" data-testid="staff-ticket-loading">
+        <div className="spinner-border spinner-border-sm text-success me-2" role="status"></div>
+        Loading ticket operational view...
       </div>
     );
   }
 
   if (error || !ticket) {
     return (
-      <div className="container py-4">
-        <div className="alert alert-danger shadow-sm">
-          <strong>Error:</strong> {error || 'Ticket could not be found.'}
+      <div className="card shadow-sm border-0 p-4 bg-white" data-testid="staff-ticket-error">
+        <div className="alert alert-danger mb-3" role="alert">
+          {error || 'Ticket not found.'}
         </div>
-        <button type="button" className="btn btn-outline-secondary btn-sm" onClick={onBack}>
-          ← Back to Queue
-        </button>
+        <div>
+          <button type="button" className="btn btn-outline-secondary btn-sm" onClick={onBack}>
+            ← Back to Queue
+          </button>
+        </div>
       </div>
     );
   }
 
-  const activeAttachments = ticket.attachments?.filter((a) => !a.isRemoved) || [];
-  const removedAttachments = ticket.attachments?.filter((a) => a.isRemoved) || [];
-  const permittedTransitions = PERMITTED_STATUS_TRANSITIONS[ticket.status] || [];
+  const activeAttachments = ticket.attachments.filter((a) => !a.isRemoved);
+  const removedAttachments = ticket.attachments.filter((a) => a.isRemoved);
+  const permittedNextStatuses = PERMITTED_STATUS_TRANSITIONS[ticket.status] || [];
 
   return (
-    <div className="container-fluid px-0" data-testid="staff-ticket-detail">
-      {/* Header Bar & Breadcrumb */}
-      <div className="d-flex flex-column flex-sm-row justify-content-between align-items-start align-items-sm-center gap-2 mb-3">
+    <div className="staff-ticket-detail-view" data-testid="staff-ticket-detail-container">
+      {/* Header & Breadcrumb */}
+      <div className="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-2 mb-3">
         <nav aria-label="breadcrumb">
           <ol className="breadcrumb mb-0">
             <li className="breadcrumb-item">
@@ -417,21 +610,19 @@ export const StaffTicketDetail: React.FC<StaffTicketDetailProps> = ({ ticketId, 
           {/* Status Workflow Transition */}
           <div className="col-6 col-md-4">
             <label className="form-label small fw-bold text-muted mb-1">
-              Ticket Status <span className="badge bg-light text-dark border ms-1">{ticket.status}</span>
+              Status Transition
             </label>
             <select
               className="form-select form-select-sm"
               value={selectedStatus}
               onChange={(e) => handleStatusChangeSelect(e.target.value)}
+              disabled={permittedNextStatuses.length === 0}
               data-testid="status-transition-select"
-              disabled={permittedTransitions.length === 0}
             >
-              <option value={ticket.status} disabled>
-                Current: {ticket.status}
-              </option>
-              {permittedTransitions.map((st) => (
+              <option value={ticket.status}>{ticket.status.replace(/_/g, ' ')} (Current)</option>
+              {permittedNextStatuses.map((st) => (
                 <option key={st} value={st}>
-                  ➔ Transition to {st}
+                  ➔ {st.replace(/_/g, ' ')}
                 </option>
               ))}
             </select>
@@ -439,51 +630,85 @@ export const StaffTicketDetail: React.FC<StaffTicketDetailProps> = ({ ticketId, 
         </div>
       </div>
 
+      {/* Main Grid: Ticket Details (Left) + Interaction Tabs (Right) */}
       <div className="row g-4">
-        {/* Left Column: Read-Only Ticket Overview */}
+        {/* Left Column: Read-only Ticket Info */}
         <div className="col-12 col-lg-7">
-          <div className="card shadow-sm border-0 p-4 mb-4 bg-white" data-testid="ticket-overview-card">
-            <div className="d-flex justify-content-between align-items-start mb-3">
+          <div className="card shadow-sm border-0 bg-white p-3 p-md-4 mb-3" data-testid="ticket-details-card">
+            {/* Ticket Identifier Header */}
+            <div className="d-flex justify-content-between align-items-start border-bottom pb-3 mb-3">
               <div>
-                <span className="badge bg-light text-success font-monospace fs-6 mb-2 border">
-                  {ticket.ticketNumber}
+                <span className="badge bg-light text-muted font-monospace mb-1">{ticket.ticketNumber}</span>
+                <h5 className="fw-bold mb-0 text-dark">{ticket.summary}</h5>
+              </div>
+              <div>{renderStatusBadge(ticket.status)}</div>
+            </div>
+
+            {/* Requester & System Metadata */}
+            <div className="row g-3 mb-3">
+              <div className="col-6 col-sm-4">
+                <label className="text-muted small fw-bold d-block">Requester</label>
+                <span className="fw-semibold small text-dark d-block">{ticket.requester.name}</span>
+                <small className="text-muted" style={{ fontSize: '0.75rem' }}>
+                  {ticket.requester.department || ticket.requester.email}
+                </small>
+              </div>
+
+              <div className="col-6 col-sm-4">
+                <label className="text-muted small fw-bold d-block">Category</label>
+                <span className="small text-dark">{ticket.category.name}</span>
+              </div>
+
+              <div className="col-6 col-sm-4">
+                <label className="text-muted small fw-bold d-block">Related System</label>
+                <span className="small text-dark">{ticket.relatedSystem.name}</span>
+              </div>
+
+              <div className="col-6 col-sm-4">
+                <label className="text-muted small fw-bold d-block">Requested Priority</label>
+                <div>{renderPriorityBadge(ticket.requestedPriority)}</div>
+              </div>
+
+              <div className="col-6 col-sm-4">
+                <label className="text-muted small fw-bold d-block">IT Priority</label>
+                <div>{renderPriorityBadge(ticket.itPriority)}</div>
+              </div>
+
+              <div className="col-6 col-sm-4">
+                <label className="text-muted small fw-bold d-block">Assigned Owner</label>
+                <span className="small text-dark">
+                  {ticket.owner ? `${ticket.owner.name}` : <em className="text-muted">Unassigned</em>}
                 </span>
-                <h4 className="fw-bold text-dark mb-1">{ticket.summary}</h4>
               </div>
             </div>
 
-            <div className="card bg-light border-0 p-3 mb-3">
-              <h6 className="fw-semibold small text-muted text-uppercase mb-2">Description</h6>
-              <p className="mb-0 text-dark" style={{ whiteSpace: 'pre-wrap', lineHeight: '1.6' }}>
+            {/* Description */}
+            <div className="mb-3">
+              <label className="text-muted small fw-bold d-block mb-1">Description</label>
+              <div
+                className="p-3 rounded bg-light small"
+                style={{ whiteSpace: 'pre-wrap', lineHeight: '1.6', minHeight: '80px' }}
+                data-testid="ticket-description-box"
+              >
                 {ticket.description}
-              </p>
+              </div>
             </div>
 
-            {/* Requester & Category Info Grid */}
-            <div className="row g-2 pt-2 border-top small">
-              <div className="col-6">
-                <span className="text-muted d-block">Requester:</span>
-                <strong>{ticket.requester.name}</strong>
-                <div className="text-muted">{ticket.requester.department || ticket.requester.email}</div>
-              </div>
-              <div className="col-6">
-                <span className="text-muted d-block">Category & System:</span>
-                <strong>{ticket.category.name}</strong>
-                <div className="text-muted">{ticket.relatedSystem.name}</div>
-              </div>
-              <div className="col-6 mt-3">
-                <span className="text-muted d-block">Created Date:</span>
+            {/* Timestamps */}
+            <div className="d-flex justify-content-between text-muted" style={{ fontSize: '0.75rem' }}>
+              <div>
+                <span>Created: </span>
                 <span>{formatDate(ticket.createdAt)}</span>
               </div>
-              <div className="col-6 mt-3">
-                <span className="text-muted d-block">Last Updated:</span>
+              <div>
+                <span>Updated: </span>
                 <span>{formatDate(ticket.updatedAt)}</span>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Right Column: Interaction Tabs (Attachments + Stubs for Comments/Notes in Issue 4) */}
+        {/* Right Column: Interaction Tabs (Attachments + Comments + Internal Notes) */}
         <div className="col-12 col-lg-5">
           <div className="card shadow-sm border-0 bg-white">
             <div className="card-header bg-white border-bottom-0 pb-0 pt-3">
@@ -493,6 +718,7 @@ export const StaffTicketDetail: React.FC<StaffTicketDetailProps> = ({ ticketId, 
                     type="button"
                     className={`nav-link ${activeTab === 'attachments' ? 'active fw-bold text-success' : 'text-muted'}`}
                     onClick={() => setActiveTab('attachments')}
+                    data-testid="tab-attachments-btn"
                   >
                     📎 Attachments ({activeAttachments.length})
                   </button>
@@ -500,10 +726,11 @@ export const StaffTicketDetail: React.FC<StaffTicketDetailProps> = ({ ticketId, 
                 <li className="nav-item">
                   <button
                     type="button"
-                    className={`nav-link ${activeTab === 'comments' ? 'active fw-bold' : 'text-muted'}`}
+                    className={`nav-link ${activeTab === 'comments' ? 'active fw-bold text-success' : 'text-muted'}`}
                     onClick={() => setActiveTab('comments')}
+                    data-testid="tab-comments-btn"
                   >
-                    💬 Public Comments
+                    💬 Public Comments ({comments.length})
                   </button>
                 </li>
                 <li className="nav-item">
@@ -511,8 +738,9 @@ export const StaffTicketDetail: React.FC<StaffTicketDetailProps> = ({ ticketId, 
                     type="button"
                     className={`nav-link ${activeTab === 'notes' ? 'active fw-bold text-warning' : 'text-muted'}`}
                     onClick={() => setActiveTab('notes')}
+                    data-testid="tab-notes-btn"
                   >
-                    🔒 Internal Notes
+                    🔒 Internal Notes ({notes.length})
                   </button>
                 </li>
               </ul>
@@ -570,21 +798,157 @@ export const StaffTicketDetail: React.FC<StaffTicketDetailProps> = ({ ticketId, 
                 </div>
               )}
 
-              {/* Comments Placeholder for Issue 4 */}
+              {/* Public Comments Tab */}
               {activeTab === 'comments' && (
-                <div className="py-4 text-center text-muted" data-testid="comments-tab-pane">
-                  <div className="fs-3 mb-2">💬</div>
-                  <h6 className="fw-semibold">Public Comments Thread</h6>
-                  <p className="small mb-0">Collaborative comments with requester will be enabled in Issue 4.</p>
+                <div data-testid="comments-tab-pane">
+                  <div className="d-flex justify-content-between align-items-center mb-2">
+                    <h6 className="fw-bold small mb-0 text-success">Public Conversation Thread</h6>
+                    <small className="text-muted" style={{ fontSize: '0.75rem' }}>Visible to Requester & Staff</small>
+                  </div>
+
+                  {loadingComments ? (
+                    <div className="py-3 text-center text-muted small">Loading conversation...</div>
+                  ) : comments.length === 0 ? (
+                    <p className="text-muted small py-3 text-center mb-0">No public comments on this ticket yet.</p>
+                  ) : (
+                    <div className="comment-list mb-3" style={{ maxHeight: '320px', overflowY: 'auto' }}>
+                      {comments.map((c) => (
+                        <div
+                          key={c.id}
+                          className="card border-0 bg-light p-2 mb-2 rounded"
+                          data-testid={`public-comment-item-${c.id}`}
+                        >
+                          <div className="d-flex justify-content-between align-items-center mb-1">
+                            <div>
+                              <strong className="small text-dark">{c.author.name}</strong>
+                              {renderRoleBadge(c.author.role)}
+                            </div>
+                            <small className="text-muted" style={{ fontSize: '0.7rem' }}>
+                              {formatDate(c.createdAt)}
+                            </small>
+                          </div>
+                          <p className="small mb-0 text-dark" style={{ whiteSpace: 'pre-wrap' }}>
+                            {c.content}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Post Comment Form */}
+                  <form onSubmit={handlePostComment} className="mt-3 pt-2 border-top">
+                    {commentError && (
+                      <div className="alert alert-danger py-1 small mb-2">{commentError}</div>
+                    )}
+                    <div className="mb-2">
+                      <textarea
+                        className="form-control form-control-sm"
+                        rows={3}
+                        placeholder="Write a public comment for the requester..."
+                        value={newComment}
+                        onChange={(e) => setNewComment(e.target.value)}
+                        disabled={postingComment}
+                        maxLength={2000}
+                        data-testid="public-comment-input"
+                      ></textarea>
+                      <div className="d-flex justify-content-between align-items-center mt-1">
+                        <small className="text-muted" style={{ fontSize: '0.7rem' }}>
+                          {newComment.length} / 2,000 characters
+                        </small>
+                        <button
+                          type="submit"
+                          className="btn btn-success btn-sm px-3"
+                          disabled={postingComment || newComment.trim().length < 2}
+                          data-testid="submit-public-comment-btn"
+                        >
+                          {postingComment ? 'Posting...' : '📨 Post Public Comment'}
+                        </button>
+                      </div>
+                    </div>
+                  </form>
                 </div>
               )}
 
-              {/* Notes Placeholder for Issue 4 */}
+              {/* Internal Notes Tab */}
               {activeTab === 'notes' && (
-                <div className="py-4 text-center text-warning" data-testid="notes-tab-pane">
-                  <div className="fs-3 mb-2">🔒</div>
-                  <h6 className="fw-semibold text-dark">Confidential Internal Notes</h6>
-                  <p className="small text-muted mb-0">Private internal notes for IT Staff & Admin will be enabled in Issue 4.</p>
+                <div data-testid="notes-tab-pane">
+                  {/* Amber Confidential Banner */}
+                  <div
+                    className="alert alert-warning border-warning d-flex align-items-center py-2 px-3 mb-3 small"
+                    data-testid="internal-notes-banner"
+                    style={{ backgroundColor: '#fff8e6', borderColor: '#ffe08a' }}
+                  >
+                    <span className="me-2 fs-5">🔒</span>
+                    <div>
+                      <strong className="d-block text-dark">Confidential Internal Notes</strong>
+                      <span className="text-muted" style={{ fontSize: '0.75rem' }}>
+                        Visible only to IT Staff & Administrators. Never disclosed to Requesters.
+                      </span>
+                    </div>
+                  </div>
+
+                  {loadingNotes ? (
+                    <div className="py-3 text-center text-muted small">Loading internal notes...</div>
+                  ) : notes.length === 0 ? (
+                    <p className="text-muted small py-3 text-center mb-0">No internal notes recorded yet.</p>
+                  ) : (
+                    <div className="notes-list mb-3" style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                      {notes.map((n) => (
+                        <div
+                          key={n.id}
+                          className="card border-warning border-start-4 p-2 mb-2 rounded shadow-none"
+                          style={{ backgroundColor: '#fffcf2', borderLeftWidth: '4px' }}
+                          data-testid={`internal-note-item-${n.id}`}
+                        >
+                          <div className="d-flex justify-content-between align-items-center mb-1">
+                            <div>
+                              <span className="me-1">🔒</span>
+                              <strong className="small text-dark">{n.author.name}</strong>
+                              {renderRoleBadge(n.author.role)}
+                            </div>
+                            <small className="text-muted" style={{ fontSize: '0.7rem' }}>
+                              {formatDate(n.createdAt)}
+                            </small>
+                          </div>
+                          <p className="small mb-0 text-dark" style={{ whiteSpace: 'pre-wrap' }}>
+                            {n.content}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Save Internal Note Form */}
+                  <form onSubmit={handlePostNote} className="mt-3 pt-2 border-top">
+                    {noteError && (
+                      <div className="alert alert-danger py-1 small mb-2">{noteError}</div>
+                    )}
+                    <div className="mb-2">
+                      <textarea
+                        className="form-control form-control-sm border-warning"
+                        rows={3}
+                        placeholder="Write a private internal note for the team..."
+                        value={newNote}
+                        onChange={(e) => setNewNote(e.target.value)}
+                        disabled={postingNote}
+                        maxLength={2000}
+                        data-testid="internal-note-input"
+                      ></textarea>
+                      <div className="d-flex justify-content-between align-items-center mt-1">
+                        <small className="text-muted" style={{ fontSize: '0.7rem' }}>
+                          {newNote.length} / 2,000 characters
+                        </small>
+                        <button
+                          type="submit"
+                          className="btn btn-warning text-dark btn-sm px-3 fw-bold"
+                          disabled={postingNote || newNote.trim().length < 2}
+                          data-testid="submit-internal-note-btn"
+                        >
+                          {postingNote ? 'Saving...' : '🔒 Save Internal Note'}
+                        </button>
+                      </div>
+                    </div>
+                  </form>
                 </div>
               )}
             </div>
@@ -661,4 +1025,3 @@ export const StaffTicketDetail: React.FC<StaffTicketDetailProps> = ({ ticketId, 
     </div>
   );
 };
-

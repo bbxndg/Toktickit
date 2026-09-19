@@ -394,7 +394,7 @@ export const UserManagement: React.FC = () => {
 
       {/* Create User Modal */}
       {isCreateOpen && (
-        <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+        <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }} data-testid="create-user-modal">
           <div className="modal-dialog modal-dialog-centered">
             <div className="modal-content">
               <div className="modal-header">
@@ -510,7 +510,7 @@ export const UserManagement: React.FC = () => {
 
       {/* Edit User Modal */}
       {editingUser && (
-        <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+        <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }} data-testid="edit-user-modal">
           <div className="modal-dialog modal-dialog-centered">
             <div className="modal-content">
               <div className="modal-header">
