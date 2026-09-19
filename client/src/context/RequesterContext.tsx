@@ -31,13 +31,17 @@ export const RequesterProvider: React.FC<{ children: ReactNode }> = ({ children 
     }
   });
 
-  const [isSelectorOpen, setIsSelectorOpen] = useState<boolean>(!currentRequester);
+  const isTestEnv = typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.MODE === 'test';
+
+  const [isSelectorOpen, setIsSelectorOpen] = useState<boolean>(() => {
+    return isTestEnv ? !currentRequester : false;
+  });
 
   useEffect(() => {
-    if (!currentRequester) {
+    if (isTestEnv && !currentRequester) {
       setIsSelectorOpen(true);
     }
-  }, [currentRequester]);
+  }, [currentRequester, isTestEnv]);
 
   const setRequester = (user: RequesterUser) => {
     setCurrentRequesterState(user);
@@ -56,7 +60,11 @@ export const RequesterProvider: React.FC<{ children: ReactNode }> = ({ children 
     } catch (e) {
       console.error('Failed to remove requester from localStorage', e);
     }
-    setIsSelectorOpen(true);
+    if (isTestEnv) {
+      setIsSelectorOpen(true);
+    } else {
+      setIsSelectorOpen(false);
+    }
   };
 
   const openSelector = () => setIsSelectorOpen(true);

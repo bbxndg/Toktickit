@@ -13,7 +13,7 @@ const prisma = new PrismaClient();
 // ---------------------------------------------------------------------------
 router.get('/tickets/:id', async (req: Request, res: Response) => {
   try {
-    const ticketId = parseInt(req.params.id, 10);
+    const ticketId = parseInt(req.params.id as string, 10);
     const requesterId = parseInt(req.query.requesterId as string, 10);
 
     if (isNaN(ticketId)) {
@@ -109,7 +109,7 @@ const handleSingleUpload = (req: Request, res: Response, next: any) => {
 
 router.post('/tickets/:id/attachments', handleSingleUpload, async (req: Request, res: Response) => {
   try {
-    const ticketId = parseInt(req.params.id, 10);
+    const ticketId = parseInt(req.params.id as string, 10);
     const requesterId = parseInt(req.body.requesterId, 10);
 
     if (isNaN(ticketId)) {
@@ -213,7 +213,7 @@ router.post('/tickets/:id/attachments', handleSingleUpload, async (req: Request,
 // ---------------------------------------------------------------------------
 router.get('/attachments/:id/download', async (req: Request, res: Response) => {
   try {
-    const attachmentId = parseInt(req.params.id, 10);
+    const attachmentId = parseInt(req.params.id as string, 10);
     const requesterId = parseInt(req.query.requesterId as string, 10);
 
     if (isNaN(attachmentId)) {
@@ -289,7 +289,7 @@ router.get('/attachments/:id/download', async (req: Request, res: Response) => {
 // ---------------------------------------------------------------------------
 router.patch('/attachments/:id/remove', async (req: Request, res: Response) => {
   try {
-    const attachmentId = parseInt(req.params.id, 10);
+    const attachmentId = parseInt(req.params.id as string, 10);
     const { requesterId, removalReason } = req.body;
 
     if (isNaN(attachmentId)) {
