@@ -61,6 +61,12 @@ describe('Lab 3: Role-Based Authorization & Data Isolation APIs (API-06, API-07)
     const category = await prisma.category.findFirst() || await prisma.category.create({ data: { name: 'Authz Cat' } });
     const system = await prisma.relatedSystem.findFirst() || await prisma.relatedSystem.create({ data: { name: 'Authz System' } });
 
+    await prisma.ticket.deleteMany({
+      where: {
+        summary: { startsWith: '[Authz]' },
+      },
+    });
+
     ticket1 = await prisma.ticket.create({
       data: {
         ticketNumber: 'TKT-AUTHZ-000001',
@@ -121,5 +127,19 @@ describe('Lab 3: Role-Based Authorization & Data Isolation APIs (API-06, API-07)
 
     expect(res.status).toBe(200);
     expect(res.body.id).toBe(ticket1.id);
+  });
+
+  afterAll(async () => {
+    await prisma.ticket.deleteMany({
+      where: {
+        summary: { startsWith: '[Authz]' },
+      },
+    });
+    await prisma.user.deleteMany({
+      where: {
+        email: { in: ['authz.test.req1@toktickit.local', 'authz.test.req2@toktickit.local', 'authz.test.staff@toktickit.local'] },
+      },
+    });
+    await prisma.$disconnect();
   });
 });

@@ -74,6 +74,12 @@ describe('Lab 3: Staff Ticket Detail & Operational Workflow APIs (API-11, API-12
     const category = await prisma.category.findFirst() || await prisma.category.create({ data: { name: 'IT Detail Cat' } });
     const system = await prisma.relatedSystem.findFirst() || await prisma.relatedSystem.create({ data: { name: 'IT Detail System' } });
 
+    await prisma.ticket.deleteMany({
+      where: {
+        summary: { startsWith: '[Operational]' },
+      },
+    });
+
     testTicket = await prisma.ticket.create({
       data: {
         ticketNumber: 'TKT-OP-000001',
@@ -180,5 +186,19 @@ describe('Lab 3: Staff Ticket Detail & Operational Workflow APIs (API-11, API-12
 
     expect(res.status).toBe(422);
     expect(res.body.error.code).toBe('INVALID_STATUS_TRANSITION');
+  });
+
+  afterAll(async () => {
+    await prisma.ticket.deleteMany({
+      where: {
+        summary: { startsWith: '[Operational]' },
+      },
+    });
+    await prisma.user.deleteMany({
+      where: {
+        email: { in: ['detail.test.staff1@toktickit.local', 'detail.test.staff2@toktickit.local', 'detail.test.req@toktickit.local'] },
+      },
+    });
+    await prisma.$disconnect();
   });
 });
