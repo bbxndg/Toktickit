@@ -231,8 +231,8 @@ describe('Lab 2 End-to-End User Journeys (E2E)', () => {
         return Promise.resolve(new Response(JSON.stringify(ticketDetailState), { status: 200 }));
       }
 
-      // PATCH /api/attachments/11/remove
-      if (urlStr.includes('/api/attachments/11/remove') && init?.method === 'PATCH') {
+      // DELETE /api/attachments/11 or PATCH /api/attachments/11/remove
+      if (urlStr.includes('/api/attachments/11') && (init?.method === 'DELETE' || init?.method === 'PATCH')) {
         const body = JSON.parse(init.body as string);
         ticketDetailState = {
           ...ticketDetailState,
@@ -241,7 +241,7 @@ describe('Lab 2 End-to-End User Journeys (E2E)', () => {
               ...ticketDetailState.attachments[0],
               isRemoved: true,
               removedAt: new Date().toISOString(),
-              removalReason: body.removalReason,
+              removalReason: body.reason || body.removalReason,
             },
           ],
         };
