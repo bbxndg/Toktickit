@@ -9,6 +9,8 @@ import { RequesterSelector } from './pages/RequesterSelector';
 import { CreateTicket } from './pages/CreateTicket';
 import { MyTickets } from './pages/MyTickets';
 import { TicketDetail } from './pages/TicketDetail';
+import { StaffTicketQueue } from './pages/StaffTicketQueue';
+import { StaffTicketDetail } from './pages/StaffTicketDetail';
 
 export interface Category {
   id: number;
@@ -112,12 +114,24 @@ function AppContent() {
           </>
         )}
 
-        {/* IT Staff & Admin Queue Placeholder */}
-        {(currentView === 'ticket-queue' || currentView === 'staff-ticket-detail') && (
-          <div className="card p-4 text-center border-0 shadow-sm">
-            <h4 className="fw-bold mb-2" style={{ color: 'var(--zg-primary)' }}>📥 IT Staff Ticket Queue</h4>
-            <p className="text-muted">Ticket Queue operational features will be loaded in Issue 3.</p>
-          </div>
+        {/* IT Staff & Admin Queue Views */}
+        {currentView === 'ticket-queue' && (
+          <StaffTicketQueue
+            onSelectTicket={(ticketId) => {
+              setSelectedTicketId(ticketId);
+              setCurrentView('staff-ticket-detail');
+            }}
+          />
+        )}
+
+        {currentView === 'staff-ticket-detail' && selectedTicketId && (
+          <StaffTicketDetail
+            ticketId={selectedTicketId}
+            onBack={() => {
+              setSelectedTicketId(null);
+              setCurrentView('ticket-queue');
+            }}
+          />
         )}
       </main>
     </div>
