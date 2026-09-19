@@ -353,7 +353,14 @@ export const StaffTicketDetail: React.FC<StaffTicketDetailProps> = ({ ticketId, 
           {/* Owner Assignment */}
           <div className="col-12 col-md-4">
             <label className="form-label small fw-bold text-muted mb-1 d-flex justify-content-between">
-              <span>Ticket Owner</span>
+              <span>
+                Ticket Owner{' '}
+                {ticket.owner && ticket.owner.id === user?.id && (
+                  <span className="badge bg-success-subtle text-success border border-success-subtle ms-1" style={{ fontSize: '0.7rem' }}>
+                    Assigned to You
+                  </span>
+                )}
+              </span>
               {!ticket.owner && (
                 <span className="text-warning fw-normal" style={{ fontSize: '0.75rem' }}>
                   ⚠️ Unassigned
