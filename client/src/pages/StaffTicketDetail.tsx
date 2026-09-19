@@ -767,7 +767,7 @@ export const StaffTicketDetail: React.FC<StaffTicketDetailProps> = ({ ticketId, 
                             <small className="text-muted ms-2">({formatFileSize(att.sizeBytes)})</small>
                           </div>
                           <a
-                            href={`${API_BASE}/api/attachments/${att.id}/download`}
+                            href={`${API_BASE}/api/attachments/${att.id}/download?token=${token || ''}`}
                             className="btn btn-outline-secondary btn-sm py-0 px-2"
                             download
                             data-testid={`download-btn-${att.id}`}

@@ -58,6 +58,7 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({ ticketId, onBack }) 
     auth = useAuth();
   } catch {}
   const token = auth?.token;
+  const effectiveRequesterId = auth?.user?.id || currentRequester?.id;
 
   const [ticket, setTicket] = useState<TicketDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -88,14 +89,14 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({ ticketId, onBack }) 
   const [resolveSuccessMsg, setResolveSuccessMsg] = useState('');
 
   const fetchTicket = useCallback(async () => {
-    if (!currentRequester && !token) return;
+    if (!effectiveRequesterId && !token) return;
     setLoading(true);
     setError('');
     try {
       const headers: Record<string, string> = {};
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
-      const queryParam = currentRequester ? `?requesterId=${currentRequester.id}` : '';
+      const queryParam = effectiveRequesterId ? `?requesterId=${effectiveRequesterId}` : '';
       const res = await fetch(`${API_BASE}/api/tickets/${ticketId}${queryParam}`, {
         headers,
       });
@@ -113,7 +114,7 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({ ticketId, onBack }) 
     } finally {
       setLoading(false);
     }
-  }, [ticketId, currentRequester, token]);
+  }, [ticketId, effectiveRequesterId, token]);
 
   const fetchComments = useCallback(async () => {
     try {
@@ -279,20 +280,24 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({ ticketId, onBack }) 
       setRemovalReasonError('Removal reason must be at least 3 characters.');
       return;
     }
-    if (!removalTarget || !currentRequester) return;
+    if (!removalTarget || !effectiveRequesterId) return;
 
     setRemoving(true);
     setRemovalReasonError('');
     try {
       const res = await fetch(
-        `${API_BASE}/api/attachments/${removalTarget.id}?requesterId=${currentRequester.id}`,
+        `${API_BASE}/api/attachments/${removalTarget.id}/remove`,
         {
-          method: 'DELETE',
+          method: 'PATCH',
           headers: {
             'Content-Type': 'application/json',
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
-          body: JSON.stringify({ reason: removalReason.trim() }),
+          body: JSON.stringify({
+            removalReason: removalReason.trim(),
+            reason: removalReason.trim(),
+            requesterId: effectiveRequesterId,
+          }),
         }
       );
 
@@ -318,7 +323,7 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({ ticketId, onBack }) 
 
   const handleAddAttachment = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || !currentRequester) return;
+    if (!file || !effectiveRequesterId) return;
 
     setAddAttachError('');
 
@@ -352,10 +357,11 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({ ticketId, onBack }) 
 
     const formData = new FormData();
     formData.append('file', file);
+    formData.append('requesterId', String(effectiveRequesterId));
 
     try {
       const res = await fetch(
-        `${API_BASE}/api/tickets/${ticketId}/attachments?requesterId=${currentRequester.id}`,
+        `${API_BASE}/api/tickets/${ticketId}/attachments?requesterId=${effectiveRequesterId}`,
         {
           method: 'POST',
           headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -591,7 +597,7 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({ ticketId, onBack }) 
                     </div>
                     <div className="d-flex gap-2 flex-shrink-0 align-self-end align-self-sm-center">
                       <a
-                        href={`${API_BASE}/api/attachments/${att.id}/download?requesterId=${currentRequester?.id}`}
+                        href={`${API_BASE}/api/attachments/${att.id}/download?token=${token || ''}&requesterId=${effectiveRequesterId || ''}`}
                         className="btn btn-sm btn-zg-secondary"
                         download={att.originalName}
                         data-testid={`download-btn-${att.id}`}
