@@ -153,9 +153,9 @@ npm test
 ### Test Results Summary:
 | Suite | Test Files | Total Tests | Passed | Pass Rate |
 | :--- | :---: | :---: | :---: | :---: |
-| **Server Tests** | 7 | 30 | 30 | **100%** |
-| **Client & E2E Tests** | 6 | 23 | 23 | **100%** |
-| **Total** | **13** | **53** | **53** | **100%** |
+| **Server Tests** | 14 | 80 | 80 | **100%** |
+| **Client & E2E Tests** | 13 | 49 | 49 | **100%** |
+| **Total** | **27** | **129** | **129** | **100%** |
 
 ---
 
