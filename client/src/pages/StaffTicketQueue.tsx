@@ -579,37 +579,72 @@ export const StaffTicketQueue: React.FC<StaffTicketQueueProps> = ({ onSelectTick
           </div>
 
           {/* Pagination Footer */}
-          <div className="card border-0 shadow-sm p-3 d-flex flex-column flex-md-row justify-content-between align-items-center gap-2" data-testid="staff-queue-pagination">
-            <small className="text-muted">
+          <div className="card border-0 shadow-sm p-3 d-flex flex-column flex-md-row justify-content-between align-items-center gap-3" data-testid="staff-queue-pagination">
+            <small className="text-muted" data-testid="staff-queue-pagination-summary">
               Showing {(pagination.page - 1) * pagination.pageSize + 1} to{' '}
               {Math.min(pagination.page * pagination.pageSize, pagination.totalItems)} of {pagination.totalItems} tickets
             </small>
 
-            <nav aria-label="Queue navigation">
-              <ul className="pagination pagination-sm mb-0">
+            <nav aria-label="Queue navigation" className="overflow-x-auto">
+              <ul className="pagination pagination-sm mb-0 flex-wrap justify-content-center justify-content-md-end">
                 <li className={`page-item ${pagination.page <= 1 ? 'disabled' : ''}`}>
                   <button
-                    className="page-link"
+                    className="page-link text-dark"
                     type="button"
                     onClick={() => setPage((p) => Math.max(1, p - 1))}
                     disabled={pagination.page <= 1}
+                    data-testid="staff-queue-pagination-prev"
                   >
                     ‹ Previous
                   </button>
                 </li>
-                {Array.from({ length: pagination.totalPages }, (_, i) => i + 1).map((num) => (
-                  <li key={num} className={`page-item ${num === pagination.page ? 'active' : ''}`}>
-                    <button className="page-link" type="button" onClick={() => setPage(num)}>
-                      {num}
-                    </button>
-                  </li>
-                ))}
+
+                {(() => {
+                  const getPaginationItems = (current: number, total: number): (number | string)[] => {
+                    if (total <= 7) {
+                      return Array.from({ length: total }, (_, i) => i + 1);
+                    }
+                    if (current <= 4) {
+                      return [1, 2, 3, 4, 5, "...", total];
+                    }
+                    if (current >= total - 3) {
+                      return [1, "...", total - 4, total - 3, total - 2, total - 1, total];
+                    }
+                    return [1, "...", current - 1, current, current + 1, "...", total];
+                  };
+
+                  return getPaginationItems(pagination.page, pagination.totalPages).map((item, idx) => {
+                    if (item === "...") {
+                      return (
+                        <li key={`ellipsis-${idx}`} className="page-item disabled">
+                          <span className="page-link text-muted">…</span>
+                        </li>
+                      );
+                    }
+
+                    const num = Number(item);
+                    return (
+                      <li key={num} className={`page-item ${num === pagination.page ? 'active' : ''}`}>
+                        <button
+                          className={`page-link ${num === pagination.page ? 'btn-zg-primary border-0' : 'text-dark'}`}
+                          type="button"
+                          onClick={() => setPage(num)}
+                          data-testid={`staff-queue-page-${num}`}
+                        >
+                          {num}
+                        </button>
+                      </li>
+                    );
+                  });
+                })()}
+
                 <li className={`page-item ${pagination.page >= pagination.totalPages ? 'disabled' : ''}`}>
                   <button
-                    className="page-link"
+                    className="page-link text-dark"
                     type="button"
                     onClick={() => setPage((p) => Math.min(pagination.totalPages, p + 1))}
                     disabled={pagination.page >= pagination.totalPages}
+                    data-testid="staff-queue-pagination-next"
                   >
                     Next ›
                   </button>

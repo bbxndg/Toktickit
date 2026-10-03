@@ -3,7 +3,7 @@
 ## AI Agent and Model
 
 - **Agent / Environment:** Antigravity (Google DeepMind Advanced Agentic Coding Assistant)
-- **Models:** Anthropic Claude 3.7 Sonnet (Thinking) & Google Gemini 3.7 Flash
+- **Models:** Google Gemini 3.7 Flash, "High" thinking for **planning** and "medium" thinking for **execution**.
 - **Workflow:** Pair programming with Spec-Driven Development (Spec DD) and Test-Driven Development (TDD), interactive terminal execution, file inspection, automated test validation, code refactoring based on peer review feedback, and atomic Git commit management.
 
 ---
@@ -28,7 +28,7 @@
 ## Overall Reflection
 
 ### How I Used the AI Agent
-Throughout Lab 3, I utilized **Antigravity (Claude 3.7 Sonnet & Gemini 3.7 Flash)** as an active, human-directed pair programming partner:
+Throughout Lab 3, I utilized **Antigravity (Gemini 3.7 Flash)** as an active, human-directed pair programming partner:
 1. **Spec-Driven Architecture:** Before writing code, I guided the AI to draft comprehensive specification documents (`docs/lab-03/`) defining role boundaries, security policies, and test matrices.
 2. **Test-Driven Development (TDD):** Every feature was accompanied by automated API tests (Supertest), UI component tests (Vitest + Testing Library), and full E2E user journeys.
 3. **Rigorous Code Review & Refactoring:** I established a structured GitHub PR workflow where constructive feedback from peer reviews was analyzed and implemented through clean, atomic commits.
