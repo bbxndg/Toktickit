@@ -114,7 +114,8 @@ describe('Lab 3: Staff Ticket Detail & Operational Workflow APIs (API-11, API-12
   it('API-11: should claim unassigned ticket, set ownerId to authenticated staff, and advance status to OPEN', async () => {
     const res = await request(app)
       .patch(`/api/staff/tickets/${testTicket.id}/claim`)
-      .set('Authorization', `Bearer ${staff1Token}`);
+      .set('Authorization', `Bearer ${staff1Token}`)
+      .send({ version: (await prisma.ticket.findUniqueOrThrow({ where: { id: testTicket.id } })).version });
 
     expect(res.status).toBe(200);
     expect(res.body.ownerId).toBe(staff1.id);
@@ -127,7 +128,7 @@ describe('Lab 3: Staff Ticket Detail & Operational Workflow APIs (API-11, API-12
     const res = await request(app)
       .patch(`/api/staff/tickets/${testTicket.id}/assign`)
       .set('Authorization', `Bearer ${staff1Token}`)
-      .send({ ownerId: staff2.id });
+      .send({ ownerId: staff2.id, version: (await prisma.ticket.findUniqueOrThrow({ where: { id: testTicket.id } })).version });
 
     expect(res.status).toBe(200);
     expect(res.body.ownerId).toBe(staff2.id);
@@ -139,7 +140,7 @@ describe('Lab 3: Staff Ticket Detail & Operational Workflow APIs (API-11, API-12
     const res = await request(app)
       .patch(`/api/staff/tickets/${testTicket.id}/assign`)
       .set('Authorization', `Bearer ${staff1Token}`)
-      .send({ ownerId: inactiveStaff.id });
+      .send({ ownerId: inactiveStaff.id, version: (await prisma.ticket.findUniqueOrThrow({ where: { id: testTicket.id } })).version });
 
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe('INVALID_OWNER');
@@ -149,7 +150,7 @@ describe('Lab 3: Staff Ticket Detail & Operational Workflow APIs (API-11, API-12
     const res = await request(app)
       .patch(`/api/staff/tickets/${testTicket.id}/assign`)
       .set('Authorization', `Bearer ${staff1Token}`)
-      .send({ ownerId: requester.id });
+      .send({ ownerId: requester.id, version: (await prisma.ticket.findUniqueOrThrow({ where: { id: testTicket.id } })).version });
 
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe('INVALID_OWNER');
@@ -160,7 +161,7 @@ describe('Lab 3: Staff Ticket Detail & Operational Workflow APIs (API-11, API-12
     const res = await request(app)
       .patch(`/api/staff/tickets/${testTicket.id}/priority`)
       .set('Authorization', `Bearer ${staff1Token}`)
-      .send({ itPriority: 'CRITICAL' });
+      .send({ itPriority: 'CRITICAL', version: (await prisma.ticket.findUniqueOrThrow({ where: { id: testTicket.id } })).version });
 
     expect(res.status).toBe(200);
     expect(res.body.itPriority).toBe('CRITICAL');
@@ -171,7 +172,7 @@ describe('Lab 3: Staff Ticket Detail & Operational Workflow APIs (API-11, API-12
     const res = await request(app)
       .patch(`/api/staff/tickets/${testTicket.id}/status`)
       .set('Authorization', `Bearer ${staff1Token}`)
-      .send({ status: 'IN_PROGRESS' });
+      .send({ status: 'IN_PROGRESS', version: (await prisma.ticket.findUniqueOrThrow({ where: { id: testTicket.id } })).version });
 
     expect(res.status).toBe(200);
     expect(res.body.status).toBe('IN_PROGRESS');
@@ -182,7 +183,7 @@ describe('Lab 3: Staff Ticket Detail & Operational Workflow APIs (API-11, API-12
     const res = await request(app)
       .patch(`/api/staff/tickets/${testTicket.id}/status`)
       .set('Authorization', `Bearer ${staff1Token}`)
-      .send({ status: 'CLOSED' });
+      .send({ status: 'CLOSED', version: (await prisma.ticket.findUniqueOrThrow({ where: { id: testTicket.id } })).version });
 
     expect(res.status).toBe(422);
     expect(res.body.error.code).toBe('INVALID_STATUS_TRANSITION');
