@@ -148,6 +148,7 @@ describe('Lab 3 End-to-End User Journeys (E2E)', () => {
 
     let activeTicket = {
       id: 201,
+      version: 1,
       ticketNumber: 'TKT-2026-000201',
       summary: 'Printer spooler crash on Floor 3',
       description: 'Network printer queues are stuck in error state.',

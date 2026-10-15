@@ -27,6 +27,7 @@ describe('UI-05: Tabbed Comments, Internal Notes & Requester Resolution', () => 
 
   const mockTicket = {
     id: 101,
+    version: 1,
     ticketNumber: 'TKT-2026-000101',
     summary: 'Core switch uplink flap',
     description: 'Switch port 24 on core switch drops packet periodically.',
@@ -228,6 +229,7 @@ describe('UI-05: Tabbed Comments, Internal Notes & Requester Resolution', () => 
         resolvedTriggered = true;
         return Promise.resolve(new Response(JSON.stringify({
           id: 101,
+          version: 1,
           status: 'RESOLVED',
           requesterResolvedIndication: true,
           updatedAt: new Date().toISOString(),

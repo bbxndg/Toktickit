@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { ActionsTaken, type ActionTicket } from '../components/tickets/ActionsTaken';
 import { useAuth } from '../context/AuthContext';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
@@ -51,6 +52,7 @@ interface NoteItem {
 
 interface TicketDetailData {
   id: number;
+  version: number;
   ticketNumber: string;
   summary: string;
   description: string;
@@ -98,6 +100,14 @@ export const StaffTicketDetail: React.FC<StaffTicketDetailProps> = ({ ticketId, 
   const [error, setError] = useState('');
   const [operationMsg, setOperationMsg] = useState<{ type: 'success' | 'danger'; text: string } | null>(null);
 
+  const [operationBusy, setOperationBusy] = useState(false);
+  const [needsReload, setNeedsReload] = useState(false);
+  const operationLock = useRef(false);
+  const onActionTicketChange = useCallback((parent: ActionTicket) => {
+    setTicket(prev => prev && parent.version >= prev.version ? { ...prev, ...parent } : prev);
+    setSelectedStatus(parent.status);
+  }, []);
+
   // Operational form states
   const [selectedOwner, setSelectedOwner] = useState<string>('');
   const [selectedPriority, setSelectedPriority] = useState<string>('');
@@ -109,7 +119,7 @@ export const StaffTicketDetail: React.FC<StaffTicketDetailProps> = ({ ticketId, 
   const [isConfirmingTerminal, setIsConfirmingTerminal] = useState(false);
 
   // Active Tab: attachments, comments, notes
-  const [activeTab, setActiveTab] = useState<'attachments' | 'comments' | 'notes'>('attachments');
+  const [activeTab, setActiveTab] = useState<'attachments' | 'comments' | 'notes' | 'actions'>('attachments');
 
   // Collaboration state
   const [comments, setComments] = useState<CommentItem[]>([]);
@@ -142,6 +152,7 @@ export const StaffTicketDetail: React.FC<StaffTicketDetailProps> = ({ ticketId, 
       setSelectedOwner(data.ownerId ? String(data.ownerId) : '');
       setSelectedPriority(data.itPriority || data.requestedPriority);
       setSelectedStatus(data.status);
+      setNeedsReload(false);
     } catch (err: any) {
       setError(err.message || 'Unable to load ticket details.');
     } finally {
@@ -218,7 +229,8 @@ export const StaffTicketDetail: React.FC<StaffTicketDetailProps> = ({ ticketId, 
 
   // Claim Ticket
   const handleClaimTicket = async () => {
-    if (!ticket) return;
+    if (!ticket || operationLock.current) return;
+    operationLock.current = true; setOperationBusy(true);
     try {
       const res = await fetch(`${API_BASE}/api/staff/tickets/${ticket.id}/claim`, {
         method: 'PATCH',
@@ -226,26 +238,29 @@ export const StaffTicketDetail: React.FC<StaffTicketDetailProps> = ({ ticketId, 
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
+        body: JSON.stringify({ version: ticket.version }),
       });
 
       if (!res.ok) {
+        if (res.status === 409) setNeedsReload(true);
         const data = await res.json();
         throw new Error(data.error?.message || 'Failed to claim ticket.');
       }
 
       const updated = await res.json();
-      setTicket((prev) => (prev ? { ...prev, ownerId: updated.ownerId, owner: updated.owner, status: updated.status } : null));
+      setTicket((prev) => (prev ? { ...prev, ownerId: updated.ownerId, owner: updated.owner, status: updated.status, version: updated.version, updatedAt: updated.updatedAt } : null));
       setSelectedOwner(String(updated.ownerId));
       setSelectedStatus(updated.status);
       showToast('success', `You claimed ticket #${updated.ticketNumber}. Status updated to ${updated.status}.`);
     } catch (err: any) {
       showToast('danger', err.message);
-    }
+    } finally { operationLock.current = false; setOperationBusy(false); }
   };
 
   // Reassign Owner
   const handleAssignOwner = async (newOwnerId: string) => {
-    if (!ticket) return;
+    if (!ticket || operationLock.current) return;
+    operationLock.current = true; setOperationBusy(true);
     try {
       const res = await fetch(`${API_BASE}/api/staff/tickets/${ticket.id}/assign`, {
         method: 'PATCH',
@@ -253,28 +268,30 @@ export const StaffTicketDetail: React.FC<StaffTicketDetailProps> = ({ ticketId, 
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ ownerId: newOwnerId === '' ? null : Number(newOwnerId) }),
+        body: JSON.stringify({ ownerId: newOwnerId === '' ? null : Number(newOwnerId), version: ticket.version }),
       });
 
       if (!res.ok) {
+        if (res.status === 409) setNeedsReload(true);
         const data = await res.json();
         throw new Error(data.error?.message || 'Failed to reassign ticket.');
       }
 
       const updated = await res.json();
-      setTicket((prev) => (prev ? { ...prev, ownerId: updated.ownerId, owner: updated.owner, status: updated.status } : null));
+      setTicket((prev) => (prev ? { ...prev, ownerId: updated.ownerId, owner: updated.owner, status: updated.status, version: updated.version, updatedAt: updated.updatedAt } : null));
       setSelectedOwner(newOwnerId);
       setSelectedStatus(updated.status);
       showToast('success', updated.owner ? `Ticket assigned to ${updated.owner.name}.` : 'Ticket unassigned.');
     } catch (err: any) {
       showToast('danger', err.message);
       setSelectedOwner(ticket.ownerId ? String(ticket.ownerId) : '');
-    }
+    } finally { operationLock.current = false; setOperationBusy(false); }
   };
 
   // Update IT Priority
   const handleUpdatePriority = async (newPrio: string) => {
-    if (!ticket) return;
+    if (!ticket || operationLock.current) return;
+    operationLock.current = true; setOperationBusy(true);
     try {
       const res = await fetch(`${API_BASE}/api/staff/tickets/${ticket.id}/priority`, {
         method: 'PATCH',
@@ -282,22 +299,23 @@ export const StaffTicketDetail: React.FC<StaffTicketDetailProps> = ({ ticketId, 
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ itPriority: newPrio }),
+        body: JSON.stringify({ itPriority: newPrio, version: ticket.version }),
       });
 
       if (!res.ok) {
+        if (res.status === 409) setNeedsReload(true);
         const data = await res.json();
         throw new Error(data.error?.message || 'Failed to update priority.');
       }
 
       const updated = await res.json();
-      setTicket((prev) => (prev ? { ...prev, itPriority: updated.itPriority } : null));
+      setTicket((prev) => (prev ? { ...prev, itPriority: updated.itPriority, version: updated.version, updatedAt: updated.updatedAt } : null));
       setSelectedPriority(updated.itPriority);
       showToast('success', `IT Priority updated to ${updated.itPriority}.`);
     } catch (err: any) {
       showToast('danger', err.message);
       setSelectedPriority(ticket.itPriority || ticket.requestedPriority);
-    }
+    } finally { operationLock.current = false; setOperationBusy(false); }
   };
 
   // Handle Status Transition
@@ -314,7 +332,8 @@ export const StaffTicketDetail: React.FC<StaffTicketDetailProps> = ({ ticketId, 
   };
 
   const executeStatusTransition = async (targetStatus: string, reason?: string) => {
-    if (!ticket) return;
+    if (!ticket || operationLock.current) return;
+    operationLock.current = true; setOperationBusy(true);
     try {
       const res = await fetch(`${API_BASE}/api/staff/tickets/${ticket.id}/status`, {
         method: 'PATCH',
@@ -322,16 +341,17 @@ export const StaffTicketDetail: React.FC<StaffTicketDetailProps> = ({ ticketId, 
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ status: targetStatus, reason }),
+        body: JSON.stringify({ status: targetStatus, reason, version: ticket.version }),
       });
 
       if (!res.ok) {
+        if (res.status === 409) setNeedsReload(true);
         const data = await res.json();
         throw new Error(data.error?.message || 'Status transition failed.');
       }
 
       const updated = await res.json();
-      setTicket((prev) => (prev ? { ...prev, status: updated.status } : null));
+      setTicket((prev) => (prev ? { ...prev, status: updated.status, version: updated.version, updatedAt: updated.updatedAt } : null));
       setSelectedStatus(updated.status);
       setIsConfirmingTerminal(false);
       setPendingStatus(null);
@@ -339,9 +359,7 @@ export const StaffTicketDetail: React.FC<StaffTicketDetailProps> = ({ ticketId, 
     } catch (err: any) {
       showToast('danger', err.message);
       setSelectedStatus(ticket.status);
-      setIsConfirmingTerminal(false);
-      setPendingStatus(null);
-    }
+    } finally { operationLock.current = false; setOperationBusy(false); }
   };
 
   // Post Public Comment
@@ -540,6 +558,8 @@ export const StaffTicketDetail: React.FC<StaffTicketDetailProps> = ({ ticketId, 
         </div>
       )}
 
+      {needsReload && <div role="alert" className="alert alert-warning">This Ticket changed. Reload and review before saving.
+        <button type="button" className="btn btn-zg-secondary ms-2" onClick={() => void fetchTicket()}>Reload Latest Ticket</button></div>}
       {/* Operational Action Strip */}
       <div className="card shadow-sm border-0 mb-4 p-3 bg-white" data-testid="staff-operational-strip">
         <div className="row g-3 align-items-center">
@@ -565,6 +585,7 @@ export const StaffTicketDetail: React.FC<StaffTicketDetailProps> = ({ ticketId, 
                 className="form-select"
                 value={selectedOwner}
                 onChange={(e) => handleAssignOwner(e.target.value)}
+                disabled={operationBusy || needsReload || ['CLOSED', 'CANCELLED'].includes(ticket.status)}
                 data-testid="assign-owner-select"
               >
                 <option value="">-- Unassigned --</option>
@@ -580,6 +601,7 @@ export const StaffTicketDetail: React.FC<StaffTicketDetailProps> = ({ ticketId, 
                   type="button"
                   className="btn btn-success text-nowrap"
                   onClick={handleClaimTicket}
+                  disabled={operationBusy || needsReload || ['CLOSED', 'CANCELLED'].includes(ticket.status)}
                   data-testid="claim-ticket-btn"
                   title="Claim ownership for yourself"
                 >
@@ -598,6 +620,7 @@ export const StaffTicketDetail: React.FC<StaffTicketDetailProps> = ({ ticketId, 
               className="form-select form-select-sm"
               value={selectedPriority}
               onChange={(e) => handleUpdatePriority(e.target.value)}
+              disabled={operationBusy || needsReload || ['CLOSED', 'CANCELLED'].includes(ticket.status)}
               data-testid="it-priority-select"
             >
               <option value="LOW">Low</option>
@@ -616,7 +639,7 @@ export const StaffTicketDetail: React.FC<StaffTicketDetailProps> = ({ ticketId, 
               className="form-select form-select-sm"
               value={selectedStatus}
               onChange={(e) => handleStatusChangeSelect(e.target.value)}
-              disabled={permittedNextStatuses.length === 0}
+              disabled={operationBusy || needsReload || permittedNextStatuses.length === 0}
               data-testid="status-transition-select"
             >
               <option value={ticket.status}>{ticket.status.replace(/_/g, ' ')} (Current)</option>
@@ -633,7 +656,7 @@ export const StaffTicketDetail: React.FC<StaffTicketDetailProps> = ({ ticketId, 
       {/* Main Grid: Ticket Details (Left) + Interaction Tabs (Right) */}
       <div className="row g-4">
         {/* Left Column: Read-only Ticket Info */}
-        <div className="col-12 col-lg-7">
+        <div className={activeTab === 'actions' ? 'col-12' : 'col-12 col-lg-7'}>
           <div className="card shadow-sm border-0 bg-white p-3 p-md-4 mb-3" data-testid="ticket-details-card">
             {/* Ticket Identifier Header */}
             <div className="d-flex justify-content-between align-items-start border-bottom pb-3 mb-3">
@@ -709,10 +732,12 @@ export const StaffTicketDetail: React.FC<StaffTicketDetailProps> = ({ ticketId, 
         </div>
 
         {/* Right Column: Interaction Tabs (Attachments + Comments + Internal Notes) */}
-        <div className="col-12 col-lg-5">
+        <div className={activeTab === 'actions' ? 'col-12' : 'col-12 col-lg-5'}>
           <div className="card shadow-sm border-0 bg-white">
             <div className="card-header bg-white border-bottom-0 pb-0 pt-3">
-              <ul className="nav nav-tabs card-header-tabs" role="tablist">
+              <ul className="nav nav-tabs card-header-tabs flex-wrap" aria-label="Ticket collaboration">
+                <li className="nav-item"><button type="button" className={`nav-link ${activeTab === 'actions' ? 'active fw-bold text-success' : 'text-muted'}`}
+                  aria-pressed={activeTab === 'actions'} onClick={() => setActiveTab('actions')}>Actions Taken</button></li>
                 <li className="nav-item">
                   <button
                     type="button"
@@ -747,6 +772,8 @@ export const StaffTicketDetail: React.FC<StaffTicketDetailProps> = ({ ticketId, 
             </div>
 
             <div className="card-body p-3">
+              {activeTab === 'actions' && token && user && <ActionsTaken ticketId={ticketId} token={token} currentUser={user}
+                ticketStatus={ticket.status} ticketVersion={ticket.version} onTicketChange={onActionTicketChange} />}
               {/* Attachments Tab */}
               {activeTab === 'attachments' && (
                 <div data-testid="attachments-tab-pane">
@@ -1025,6 +1052,7 @@ export const StaffTicketDetail: React.FC<StaffTicketDetailProps> = ({ ticketId, 
                   type="button"
                   className="btn btn-danger btn-sm fw-bold"
                   onClick={() => executeStatusTransition(pendingStatus, terminalReason)}
+                  disabled={operationBusy || needsReload}
                   data-testid="confirm-terminal-btn"
                 >
                   Confirm & Update Status
