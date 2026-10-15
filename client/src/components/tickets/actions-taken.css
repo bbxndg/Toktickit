@@ -1,0 +1,24 @@
+.actions-taken { min-width: 0; }
+.actions-taken .action-description { overflow-wrap: anywhere; white-space: pre-wrap; }
+.actions-taken td, .actions-taken th { min-width: 5rem; }
+.actions-taken th { white-space: nowrap; }
+.actions-taken .btn, .action-dialog .btn { min-height: 44px; }
+.action-dialog-backdrop { position: fixed; inset: 0; z-index: 1080; background: #0009; display: flex; align-items: flex-start; justify-content: center; overflow-y: auto; padding: 24px; }
+.action-dialog { width: 100%; max-width: 720px; padding: 24px; background: var(--zg-surface, white); border-radius: 8px; margin: auto 0; overflow-wrap: anywhere; }
+.action-dialog .zg-input { display: block; width: 100%; min-height: 40px; background: #fff; border: 1px solid var(--zg-border, #d1d9d4); border-radius: 6px; padding: 8px 12px; color: var(--zg-text-primary, #1a2e26); }
+.action-dialog .zg-input.is-invalid { border-color: var(--zg-error, #b91c1c); }
+.action-dialog .form-check { display: flex; align-items: center; gap: 10px; padding-left: 0; }
+.action-dialog .form-check-input { min-height: 18px; height: 18px; width: 18px; margin: 0; flex: 0 0 18px; }
+.action-dialog .form-check-label { min-height: 44px; display: flex; align-items: center; }
+.action-dialog .action-textarea { min-height: 120px; resize: vertical; }
+.action-dialog .action-details dd { white-space: pre-wrap; overflow-wrap: anywhere; }
+.actions-taken .action-status-planned { background: #eaf6ef; color: #006b3c; }
+.actions-taken .action-status-in_progress { background: #fef3c7; color: #b45309; }
+.actions-taken .action-status-completed { background: #dcfce7; color: #166534; }
+.actions-taken .action-status-cancelled { background: #fee2e2; color: #b91c1c; }
+.actions-taken button:focus-visible, .action-dialog :is(button, input, select, textarea):focus-visible { outline: 2px solid var(--zg-secondary, #0b7a46); outline-offset: 2px; }
+@media (max-width: 767px) {
+  .action-dialog-backdrop { padding: 8px; }
+  .action-dialog { padding: 16px; }
+  .action-dialog :is(select, input:not([type="checkbox"])) { min-height: 44px; }
+}

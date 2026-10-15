@@ -1,14 +1,21 @@
 import { describe, it, expect } from 'vitest';
 import request from 'supertest';
 import app from '../../src/index';
+import { beforeAll as setupFixtures, afterAll } from 'vitest';
+import { requesterFixtures } from './fixtures';
+
+let fixtures: Awaited<ReturnType<typeof requesterFixtures>>;
+setupFixtures(async () => { fixtures = await requesterFixtures(); });
+afterAll(async () => { await fixtures?.cleanup(); });
 
 describe('POST /api/tickets (Ticket Creation API)', () => {
   it('API-01: should create a valid ticket and return HTTP 201 with generated Ticket Number', async () => {
     const res = await request(app)
       .post('/api/tickets')
-      .field('requesterId', 1)
-      .field('categoryId', 2)
-      .field('relatedSystemId', 1)
+      .set('Authorization', `Bearer ${fixtures.tokens[0]}`)
+      .field('requesterId', fixtures.users[0].id)
+      .field('categoryId', fixtures.categories[1].id)
+      .field('relatedSystemId', fixtures.systems[0].id)
       .field('requestedPriority', 'MEDIUM')
       .field('summary', 'Laptop screen flickering intermittently')
       .field('description', 'The screen flashes black for a split second every few minutes.');
@@ -20,17 +27,18 @@ describe('POST /api/tickets (Ticket Creation API)', () => {
     expect(res.body.summary).toBe('Laptop screen flickering intermittently');
     expect(res.body.status).toBe('NEW');
     expect(res.body.requestedPriority).toBe('MEDIUM');
-    expect(res.body.requesterId).toBe(1);
-    expect(res.body.category.name).toBe('Hardware');
-    expect(res.body.relatedSystem.name).toBe('Corporate Laptop');
+    expect(res.body.requesterId).toBe(fixtures.users[0].id);
+    expect(res.body.category.name).toBe(fixtures.categories[1].name);
+    expect(res.body.relatedSystem.name).toBe(fixtures.systems[0].name);
   });
 
   it('API-02: should reject submission when summary is too short (< 5 chars) with HTTP 400', async () => {
     const res = await request(app)
       .post('/api/tickets')
-      .field('requesterId', 1)
-      .field('categoryId', 1)
-      .field('relatedSystemId', 1)
+      .set('Authorization', `Bearer ${fixtures.tokens[0]}`)
+      .field('requesterId', fixtures.users[0].id)
+      .field('categoryId', fixtures.categories[0].id)
+      .field('relatedSystemId', fixtures.systems[0].id)
       .field('requestedPriority', 'LOW')
       .field('summary', 'Bad')
       .field('description', 'This is a sufficiently long description for the test.');
@@ -49,9 +57,10 @@ describe('POST /api/tickets (Ticket Creation API)', () => {
 
     const res = await request(app)
       .post('/api/tickets')
-      .field('requesterId', 1)
-      .field('categoryId', 2)
-      .field('relatedSystemId', 1)
+      .set('Authorization', `Bearer ${fixtures.tokens[0]}`)
+      .field('requesterId', fixtures.users[0].id)
+      .field('categoryId', fixtures.categories[1].id)
+      .field('relatedSystemId', fixtures.systems[0].id)
       .field('requestedPriority', 'HIGH')
       .field('summary', 'Large log file upload test')
       .field('description', 'Attaching a file that exceeds the 5 megabyte limit.')
@@ -67,9 +76,10 @@ describe('POST /api/tickets (Ticket Creation API)', () => {
 
     const res = await request(app)
       .post('/api/tickets')
-      .field('requesterId', 1)
-      .field('categoryId', 2)
-      .field('relatedSystemId', 1)
+      .set('Authorization', `Bearer ${fixtures.tokens[0]}`)
+      .field('requesterId', fixtures.users[0].id)
+      .field('categoryId', fixtures.categories[1].id)
+      .field('relatedSystemId', fixtures.systems[0].id)
       .field('requestedPriority', 'LOW')
       .field('summary', 'Invalid attachment type test')
       .field('description', 'Attaching an executable file to verify rejection.')
@@ -88,9 +98,10 @@ describe('POST /api/tickets (Ticket Creation API)', () => {
 
     const res = await request(app)
       .post('/api/tickets')
-      .field('requesterId', 1)
-      .field('categoryId', 3)
-      .field('relatedSystemId', 2)
+      .set('Authorization', `Bearer ${fixtures.tokens[0]}`)
+      .field('requesterId', fixtures.users[0].id)
+      .field('categoryId', fixtures.categories[2].id)
+      .field('relatedSystemId', fixtures.systems[1].id)
       .field('requestedPriority', 'CRITICAL')
       .field('summary', 'Email sync configuration issue')
       .field('description', 'Outlook client fails to connect with corporate exchange.')
@@ -111,6 +122,6 @@ describe('POST /api/tickets (Ticket Creation API)', () => {
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body)).toBe(true);
     expect(res.body.length).toBeGreaterThanOrEqual(6);
-    expect(res.body.some((s: any) => s.name === 'Corporate Laptop')).toBe(true);
+    expect(res.body.some((s: any) => s.name === fixtures.systems[0].name)).toBe(true);
   });
 });
