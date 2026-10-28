@@ -23,6 +23,7 @@ describe('UI-04: IT Staff Ticket Detail & Operational Controls Component Tests',
 
   const mockTicket = {
     id: 101,
+    version: 1,
     ticketNumber: 'TKT-2026-000101',
     summary: 'Core switch uplink flap',
     description: 'Switch port 24 on core switch drops packet periodically.',
@@ -71,6 +72,7 @@ describe('UI-04: IT Staff Ticket Detail & Operational Controls Component Tests',
       if (urlStr.includes('/api/staff/tickets/101/claim') && init?.method === 'PATCH') {
         return Promise.resolve(new Response(JSON.stringify({
           id: 101,
+          version: 1,
           ticketNumber: 'TKT-2026-000101',
           ownerId: staffUser.id,
           owner: staffUser,
@@ -81,6 +83,7 @@ describe('UI-04: IT Staff Ticket Detail & Operational Controls Component Tests',
         const body = JSON.parse(init.body as string);
         return Promise.resolve(new Response(JSON.stringify({
           id: 101,
+          version: 1,
           ticketNumber: 'TKT-2026-000101',
           itPriority: body.itPriority,
         }), { status: 200 }));
@@ -89,6 +92,7 @@ describe('UI-04: IT Staff Ticket Detail & Operational Controls Component Tests',
         const body = JSON.parse(init.body as string);
         return Promise.resolve(new Response(JSON.stringify({
           id: 101,
+          version: 1,
           ticketNumber: 'TKT-2026-000101',
           status: body.status,
         }), { status: 200 }));

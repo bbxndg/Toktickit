@@ -1,6 +1,8 @@
 import { Router, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
-import { authenticate, requireRole, AuthenticatedRequest } from '../middleware/auth';
+import { authenticate, enforcePasswordChange, requireRole, AuthenticatedRequest } from '../middleware/auth';
+
+import { bodyFields, checkVersion, integer, lockTicket, pathId, ApiError, sendApiError } from '../utils/ticketWrites';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -262,72 +264,23 @@ router.post('/tickets/:id/notes', authenticate, requireRole(['IT_STAFF', 'ADMINI
 // ============================================================================
 
 // PATCH /api/tickets/:id/indicate-resolved
-router.patch('/tickets/:id/indicate-resolved', authenticate, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+router.patch('/tickets/:id/indicate-resolved', authenticate, enforcePasswordChange, requireRole('REQUESTER'), async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const ticketId = Number(req.params.id);
-    if (isNaN(ticketId)) {
-      res.status(400).json({
-        error: { code: 'VALIDATION_ERROR', message: 'Invalid ticket ID.' },
-      });
-      return;
-    }
-
-    const ticket = await prisma.ticket.findUnique({
-      where: { id: ticketId },
-      select: { id: true, requesterId: true, status: true },
+    const id = pathId(req.params.id), body = bodyFields(req.body, ['version']);
+    const expected = integer(body.version, 'version');
+    const updated = await prisma.$transaction(async tx => {
+      const ticket = await lockTicket(tx, id);
+      if (ticket.requesterId !== req.user!.id) throw new ApiError(404, 'NOT_FOUND', 'Ticket not found.');
+      checkVersion(ticket.version, expected, 'version');
+      if (ticket.status !== 'IN_PROGRESS' && ticket.status !== 'WAITING_FOR_REQUESTER') {
+        throw new ApiError(422, 'INVALID_STATUS_TRANSITION', 'This Ticket is not eligible for resolution indication.');
+      }
+      // Feature 2 adds the shared version guard; feature 3 replaces this legacy status update with an advisory flag.
+      return tx.ticket.update({ where: { id }, data: { status: 'RESOLVED', version: { increment: 1 } },
+        select: { id: true, status: true, updatedAt: true, version: true } });
     });
-
-    if (!ticket) {
-      res.status(404).json({
-        error: { code: 'NOT_FOUND', message: 'Ticket not found.' },
-      });
-      return;
-    }
-
-    // Requester data isolation (BR-06)
-    if (req.user?.role === 'REQUESTER' && ticket.requesterId !== req.user.id) {
-      res.status(404).json({
-        error: { code: 'NOT_FOUND', message: 'Ticket not found.' },
-      });
-      return;
-    }
-
-    // BR-11: Can transition to RESOLVED if currently IN_PROGRESS or WAITING_FOR_REQUESTER
-    if (ticket.status !== 'IN_PROGRESS' && ticket.status !== 'WAITING_FOR_REQUESTER') {
-      res.status(422).json({
-        error: {
-          code: 'INVALID_STATUS_TRANSITION',
-          message: `Cannot indicate resolved from current status '${ticket.status}'. Must be 'IN_PROGRESS' or 'WAITING_FOR_REQUESTER'.`,
-        },
-      });
-      return;
-    }
-
-    const updated = await prisma.ticket.update({
-      where: { id: ticketId },
-      data: {
-        status: 'RESOLVED',
-      },
-      select: {
-        id: true,
-        status: true,
-        updatedAt: true,
-      },
-    });
-
-    res.status(200).json({
-      id: updated.id,
-      status: updated.status,
-      requesterResolvedIndication: true,
-      updatedAt: updated.updatedAt,
-    });
-  } catch (error: any) {
-    console.error('Error indicating resolved:', error);
-    res.status(500).json({
-      error: { code: 'INTERNAL_ERROR', message: 'Failed to update ticket status.' },
-    });
-  }
+    return res.json({ ...updated, requesterResolvedIndication: true });
+  } catch (error) { return sendApiError(res, error); }
 });
 
 export default router;
-

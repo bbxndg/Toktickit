@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { ActionsTaken, type ActionTicket } from '../components/tickets/ActionsTaken';
 import { useRequester } from '../context/RequesterContext';
 import { useAuth } from '../context/AuthContext';
 
@@ -31,6 +32,7 @@ interface CommentItem {
 
 interface TicketDetail {
   id: number;
+  version: number;
   ticketNumber: string;
   summary: string;
   description: string;
@@ -74,6 +76,11 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({ ticketId, onBack }) 
   // Add Attachment State
   const [addingAttachment, setAddingAttachment] = useState(false);
   const [addAttachError, setAddAttachError] = useState('');
+
+  const [collaborationTab, setCollaborationTab] = useState<'comments' | 'actions'>('comments');
+  const onActionTicketChange = useCallback((parent: ActionTicket) => {
+    setTicket(prev => prev && parent.version >= prev.version ? { ...prev, ...parent } : prev);
+  }, []);
 
   // Public Comments State
   const [comments, setComments] = useState<CommentItem[]>([]);
@@ -192,7 +199,8 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({ ticketId, onBack }) 
 
       const res = await fetch(`${API_BASE}/api/tickets/${ticketId}/indicate-resolved`, {
         method: 'PATCH',
-        headers,
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ version: ticket?.version }),
       });
 
       if (!res.ok) {
@@ -201,7 +209,7 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({ ticketId, onBack }) 
       }
 
       const updated = await res.json();
-      setTicket((prev) => (prev ? { ...prev, status: updated.status } : null));
+      setTicket((prev) => (prev ? { ...prev, status: updated.status, version: updated.version, updatedAt: updated.updatedAt } : null));
       setResolveModalOpen(false);
       setResolveSuccessMsg('Thank you! Your ticket status has been updated to Resolved.');
       setTimeout(() => setResolveSuccessMsg(''), 5000);
@@ -654,6 +662,15 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({ ticketId, onBack }) 
         )}
       </div>
 
+      {token && auth?.user && <>
+        <nav className="nav nav-tabs mb-3" aria-label="Ticket collaboration">
+          <button type="button" className={`nav-link ${collaborationTab === 'comments' ? 'active' : ''}`} aria-pressed={collaborationTab === 'comments'} onClick={() => setCollaborationTab('comments')}>Public Comments</button>
+          <button type="button" className={`nav-link ${collaborationTab === 'actions' ? 'active' : ''}`} aria-pressed={collaborationTab === 'actions'} onClick={() => setCollaborationTab('actions')}>Actions Taken</button>
+        </nav>
+        {collaborationTab === 'actions' && <div className="zg-card p-4 mb-4"><ActionsTaken ticketId={ticketId} token={token} currentUser={auth.user}
+          ticketStatus={ticket.status} ticketVersion={ticket.version} onTicketChange={onActionTicketChange} /></div>}
+      </>}
+      {collaborationTab === 'comments' && <>
       {/* Public Comments Section (AC-08, BR-12) */}
       <div className="zg-card p-4 shadow-sm mb-4" data-testid="public-comments-section">
         <div className="d-flex justify-content-between align-items-center mb-3">
@@ -745,6 +762,7 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({ ticketId, onBack }) 
         </form>
       </div>
 
+      </>}
       {/* Soft-Removal Confirmation Modal */}
       {removeModalOpen && removalTarget && (
         <div

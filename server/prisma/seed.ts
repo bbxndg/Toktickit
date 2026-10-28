@@ -1,5 +1,6 @@
 import { PrismaClient, Role } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import { seedLab4 } from './seedLab4';
 
 const prisma = new PrismaClient();
 
@@ -130,7 +131,7 @@ async function main() {
   for (const name of categories) {
     await prisma.category.upsert({
       where: { name },
-      update: { isActive: true },
+      update: {},
       create: { name, isActive: true },
     });
   }
@@ -139,7 +140,7 @@ async function main() {
   for (const name of relatedSystems) {
     await prisma.relatedSystem.upsert({
       where: { name },
-      update: { isActive: true },
+      update: {},
       create: { name, isActive: true },
     });
   }
@@ -148,14 +149,7 @@ async function main() {
   for (const u of users) {
     await prisma.user.upsert({
       where: { email: u.email },
-      update: {
-        name: u.name,
-        department: u.department,
-        role: u.role,
-        isActive: u.isActive,
-        isPasswordChangeRequired: u.isPasswordChangeRequired,
-        passwordHash: defaultPasswordHash,
-      },
+      update: {},
       create: {
         ...u,
         passwordHash: defaultPasswordHash,
@@ -163,6 +157,8 @@ async function main() {
     });
   }
 
+  console.log('Seeding Lab 4 Tickets and Actions Taken (existing records are preserved)...');
+  await seedLab4(prisma);
   console.log('Seeding completed successfully.');
 }
 
