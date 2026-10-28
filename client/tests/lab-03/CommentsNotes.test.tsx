@@ -225,12 +225,14 @@ describe('UI-05: Tabbed Comments, Internal Notes & Requester Resolution', () => 
 
     vi.spyOn(global, 'fetch').mockImplementation((url: string | URL | Request, init?: RequestInit) => {
       const urlStr = url.toString();
+      if (urlStr.includes('/api/auth/me')) return Promise.resolve(new Response(JSON.stringify(requesterUser), { status: 200 }));
       if (urlStr.includes('/api/tickets/101/indicate-resolved')) {
         resolvedTriggered = true;
         return Promise.resolve(new Response(JSON.stringify({
           id: 101,
           version: 1,
-          status: 'RESOLVED',
+          status: 'IN_PROGRESS',
+          requesterResolvedAt: new Date().toISOString(),
           requesterResolvedIndication: true,
           updatedAt: new Date().toISOString(),
         }), { status: 200 }));
@@ -265,7 +267,7 @@ describe('UI-05: Tabbed Comments, Internal Notes & Requester Resolution', () => 
     expect(screen.queryByTestId('internal-notes-banner')).not.toBeInTheDocument();
     expect(screen.queryByTestId('internal-note-input')).not.toBeInTheDocument();
 
-    // 3. Problem Appears Resolved button triggers modal and updates status
+    // 3. Problem Appears Resolved button sends advisory indication without changing status
     const resolveBtn = screen.getByTestId('indicate-resolved-btn');
     expect(resolveBtn).toBeInTheDocument();
     await user.click(resolveBtn);
@@ -276,7 +278,9 @@ describe('UI-05: Tabbed Comments, Internal Notes & Requester Resolution', () => 
 
     await waitFor(() => {
       expect(resolvedTriggered).toBe(true);
-      expect(screen.getByText('Thank you! Your ticket status has been updated to Resolved.')).toBeInTheDocument();
+      expect(screen.getByText('Sent to IT for review')).toBeInTheDocument();
+      expect(screen.getByText('IN PROGRESS')).toBeInTheDocument();
+      expect(screen.queryByTestId('indicate-resolved-btn')).not.toBeInTheDocument();
     });
   });
 });

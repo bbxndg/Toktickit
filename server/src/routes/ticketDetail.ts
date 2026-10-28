@@ -5,6 +5,7 @@ import fs from 'fs';
 import multer from 'multer';
 import { uploadAttachments } from '../utils/fileUpload';
 import { verifyToken } from '../utils/auth';
+import { pendingActionsWhere, workflowDetail } from '../utils/ticketWorkflow';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -46,6 +47,7 @@ router.get('/tickets/:id', async (req: Request, res: Response) => {
       where: { id: ticketId },
       include: {
         requester: { select: { id: true, name: true, email: true, department: true } },
+        _count: { select: { actionsTaken: { where: pendingActionsWhere } } },
         category: { select: { id: true, name: true } },
         relatedSystem: { select: { id: true, name: true } },
         attachments: {
@@ -84,7 +86,8 @@ router.get('/tickets/:id', async (req: Request, res: Response) => {
       });
     }
 
-    res.status(200).json(ticket);
+    const { _count, ...detail } = ticket;
+    res.status(200).json({ ...detail, ...workflowDetail(ticket, _count.actionsTaken, false) });
   } catch (error) {
     console.error('Failed to fetch ticket detail:', error);
     res.status(500).json({

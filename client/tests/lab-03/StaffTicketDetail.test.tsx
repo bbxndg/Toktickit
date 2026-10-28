@@ -188,6 +188,7 @@ describe('UI-04: IT Staff Ticket Detail & Operational Controls Component Tests',
       expect(screen.getByTestId('confirm-terminal-btn')).toBeInTheDocument();
     });
 
+    fireEvent.change(screen.getByTestId('terminal-reason-input'), { target: { value: 'Request no longer needed' } });
     fireEvent.click(screen.getByTestId('confirm-terminal-btn'));
 
     await waitFor(() => {

@@ -11,7 +11,7 @@ let client: PrismaClient | undefined;
 const admin = new PrismaClient();
 let directory: string | undefined;
 
-describe('MIG-01: additive Actions Taken migration preserves Lab 3 data', () => {
+describe('MIG-01: additive Actions Taken/workflow migrations preserve Lab 3 data', () => {
   it('backfills version 1 without changing old users/tickets/attachments/comments/notes or inventing work', async () => {
     const url = new URL(process.env.DATABASE_URL!);
     if (!url.pathname.endsWith('_lab4_feature2_test')) throw new Error('Dedicated Lab 4 test database required.');
@@ -47,15 +47,17 @@ describe('MIG-01: additive Actions Taken migration preserves Lab 3 data', () => 
     const manifest = async () => {
       const result: Record<string, unknown> = {};
       for (const table of ['User', 'Ticket', 'Attachment', 'Category', 'RelatedSystem', 'PublicComment', 'InternalNote']) {
-        result[table] = await client!.$queryRawUnsafe(`SELECT to_jsonb(t) - 'version' AS record FROM "${table}" t ORDER BY id`);
+        result[table] = await client!.$queryRawUnsafe(`SELECT to_jsonb(t) - 'version' - 'requesterResolvedIndication' - 'requesterResolvedAt' - 'resolutionSummary' - 'resolvedAt' - 'closedAt' AS record FROM "${table}" t ORDER BY id`);
       }
       return result;
     };
     const before = await manifest();
-    copyMigration('20261014090000_lab4_actions_taken'); migrate();
+    copyMigration('20261014090000_lab4_actions_taken');
+    copyMigration('20261028090000_lab4_ticket_workflow'); migrate();
     expect(await manifest()).toEqual(before);
-    expect(await client.ticket.findUniqueOrThrow({ where: { id: ticket.id } })).toMatchObject({ version: 1, status: 'RESOLVED', itPriority: null });
+    expect(await client.ticket.findUniqueOrThrow({ where: { id: ticket.id } })).toMatchObject({ version: 1, status: 'RESOLVED', itPriority: null, requesterResolvedIndication: false, requesterResolvedAt: null, resolutionSummary: null, resolvedAt: null, closedAt: null });
     expect(await client.actionTaken.count()).toBe(0);
+    expect(await client.ticketStatusEvent.count()).toBe(0);
   }, 60000);
   afterAll(async () => {
     await client?.$disconnect();

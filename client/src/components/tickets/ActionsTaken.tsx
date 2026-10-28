@@ -22,7 +22,7 @@ const label = (value: string) => value.toLowerCase().replace(/_/g, ' ').replace(
 const date = (value: string) => new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'long' }).format(new Date(value));
 
 // Restore the triggering control and keep keyboard focus inside the active dialog.
-function ActionDialog({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+export function ActionDialog({ title, onClose, children, testId }: { title: string; onClose: () => void; children: ReactNode; testId?: string }) {
   const ref = useRef<HTMLDivElement>(null); const id = useId(); const close = useRef(onClose); close.current = onClose;
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
@@ -31,7 +31,7 @@ function ActionDialog({ title, onClose, children }: { title: string; onClose: ()
     return () => { document.body.style.overflow = bodyOverflow; if (previous?.isConnected) previous.focus(); };
   }, []);
   return <div className="action-dialog-backdrop"><div ref={ref} role="dialog" aria-modal="true" aria-labelledby={id}
-    tabIndex={-1} className="action-dialog zg-card" onKeyDown={e => {
+    tabIndex={-1} data-testid={testId} className="action-dialog zg-card" onKeyDown={e => {
       if (e.key === 'Escape') { e.preventDefault(); close.current(); }
       if (e.key === 'Tab') {
         const controls = Array.from(ref.current!.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex="0"]'))

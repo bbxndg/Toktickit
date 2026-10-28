@@ -13,6 +13,7 @@ import adminUsersRouter from './routes/adminUsers';
 import staffRouter from './routes/staff';
 import commentsNotesRouter from './routes/commentsNotes';
 import actionsTakenRouter from './routes/actionsTaken';
+import statusHistoryRouter from './routes/statusHistory';
 
 dotenv.config();
 const app = express();
@@ -28,6 +29,7 @@ app.use('/api', categoriesRouter);
 app.use('/api', requestersRouter);
 app.use('/api', relatedSystemsRouter);
 app.use('/api', actionsTakenRouter);
+app.use('/api', statusHistoryRouter);
 app.use('/api', ticketsRouter);
 app.use('/api', ticketDetailRouter);
 app.use('/api', authRouter);

@@ -275,11 +275,11 @@ router.patch('/tickets/:id/indicate-resolved', authenticate, enforcePasswordChan
       if (ticket.status !== 'IN_PROGRESS' && ticket.status !== 'WAITING_FOR_REQUESTER') {
         throw new ApiError(422, 'INVALID_STATUS_TRANSITION', 'This Ticket is not eligible for resolution indication.');
       }
-      // Feature 2 adds the shared version guard; feature 3 replaces this legacy status update with an advisory flag.
-      return tx.ticket.update({ where: { id }, data: { status: 'RESOLVED', version: { increment: 1 } },
-        select: { id: true, status: true, updatedAt: true, version: true } });
+      const select = { id: true, status: true, updatedAt: true, version: true, requesterResolvedIndication: true, requesterResolvedAt: true } as const;
+      if (ticket.requesterResolvedIndication) return tx.ticket.findUniqueOrThrow({ where: { id }, select });
+      return tx.ticket.update({ where: { id }, data: { requesterResolvedIndication: true, requesterResolvedAt: new Date(), version: { increment: 1 } }, select });
     });
-    return res.json({ ...updated, requesterResolvedIndication: true });
+    return res.json(updated);
   } catch (error) { return sendApiError(res, error); }
 });
 
