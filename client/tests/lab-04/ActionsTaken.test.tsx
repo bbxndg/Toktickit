@@ -24,6 +24,17 @@ beforeEach(() => {
 });
 
 describe('Lab 4 Actions Taken UI (UI-01, UI-05, UI-06)', () => {
+  it('opens the requested action page and identifies only the selected action', async () => {
+    vi.mocked(fetch).mockImplementation(async (url: string) => response({ data: [action, { ...action, id: 302, description: 'Another action' }], ticket: parent,
+      pagination: { page: 2, pageSize: 20, totalItems: 22, totalPages: 2 } }));
+    render(<ActionsTaken ticketId={105} token="test-token" currentUser={user} ticketStatus="OPEN" ticketVersion={4}
+      onTicketChange={onTicketChange} actionTarget={{ id: 302, page: 2 }} />);
+    expect(await screen.findAllByText('Another action')).toHaveLength(2);
+    expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes('page=2'))).toBe(true);
+    const rows = screen.getAllByRole('row');
+    expect(rows.find(row => row.textContent?.includes('Another action'))).toHaveTextContent('(Selected)');
+    expect(rows.find(row => row.textContent?.includes(action.description))).not.toHaveTextContent('(Selected)');
+  });
   it('renders inert shared records and gives the Requester no write controls', async () => {
     mount('REQUESTER');
     expect((await screen.findAllByText(action.description)).length).toBeGreaterThan(0);
