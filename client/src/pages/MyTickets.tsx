@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useRequester } from '../context/RequesterContext';
+import { useAuth } from '../context/AuthContext';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
 
@@ -30,11 +31,14 @@ interface OptionItem {
 }
 
 interface MyTicketsProps {
+  initialQuery?: Record<string, string | number>;
+  active?: boolean;
   onCreateTicket: () => void;
   onSelectTicket?: (ticketId: number) => void;
 }
 
-export const MyTickets: React.FC<MyTicketsProps> = ({ onCreateTicket, onSelectTicket }) => {
+export const MyTickets: React.FC<MyTicketsProps> = ({ onCreateTicket, onSelectTicket, initialQuery = {}, active = true }) => {
+  const { token } = useAuth();
   const { currentRequester, openSelector } = useRequester();
 
   const [tickets, setTickets] = useState<TicketListItem[]>([]);
@@ -51,11 +55,16 @@ export const MyTickets: React.FC<MyTicketsProps> = ({ onCreateTicket, onSelectTi
   const [debouncedSearch, setDebouncedSearch] = useState<string>('');
   const [categoryId, setCategoryId] = useState<string>('');
   const [requestedPriority, setRequestedPriority] = useState<string>('');
-  const [status, setStatus] = useState<string>('');
+  const [status, setStatus] = useState<string>(String(initialQuery.status || ''));
+  const [statusGroup, setStatusGroup] = useState(String(initialQuery.statusGroup || ''));
+  const [resolvedSince, setResolvedSince] = useState(String(initialQuery.resolvedSince || ''));
+  const [resolvedUntil, setResolvedUntil] = useState(String(initialQuery.resolvedUntil || ''));
   const [page, setPage] = useState<number>(1);
 
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string>('');
+  const requestSequence = useRef(0);
+  const requesterId = currentRequester?.id;
 
   // Debounce search input by 300ms to avoid excessive API requests during typing
   useEffect(() => {
@@ -86,7 +95,8 @@ export const MyTickets: React.FC<MyTicketsProps> = ({ onCreateTicket, onSelectTi
 
   // Fetch tickets for active requester
   const fetchTickets = useCallback(async () => {
-    if (!currentRequester) {
+    const sequence = ++requestSequence.current;
+    if (!requesterId) {
       setTickets([]);
       setLoading(false);
       return;
@@ -94,10 +104,11 @@ export const MyTickets: React.FC<MyTicketsProps> = ({ onCreateTicket, onSelectTi
 
     setLoading(true);
     setError('');
+    let movingToAvailablePage = false;
 
     try {
       const params = new URLSearchParams({
-        requesterId: String(currentRequester.id),
+        requesterId: String(requesterId),
         page: String(page),
         pageSize: '8',
       });
@@ -106,27 +117,39 @@ export const MyTickets: React.FC<MyTicketsProps> = ({ onCreateTicket, onSelectTi
       if (categoryId) params.append('categoryId', categoryId);
       if (requestedPriority) params.append('requestedPriority', requestedPriority);
       if (status) params.append('status', status);
+      if (statusGroup) params.append('statusGroup', statusGroup);
+      if (resolvedSince) params.append('resolvedSince', resolvedSince);
+      if (resolvedUntil) params.append('resolvedUntil', resolvedUntil);
 
-      const res = await fetch(`${API_BASE}/api/tickets?${params.toString()}`);
+      const res = await fetch(`${API_BASE}/api/tickets?${params.toString()}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
       if (!res.ok) {
         throw new Error(`Failed to load tickets (${res.status})`);
       }
 
       const json = await res.json();
+      if (sequence !== requestSequence.current) return;
+      if (Number.isInteger(json.pagination?.totalPages) && json.pagination.totalPages >= 1 && page > json.pagination.totalPages) {
+        movingToAvailablePage = true;
+        setPage(json.pagination.totalPages);
+        return;
+      }
       setTickets(json.data || []);
       setPagination(json.pagination || { page: 1, pageSize: 8, totalItems: 0, totalPages: 1 });
     } catch (err: any) {
+      if (sequence !== requestSequence.current) return;
       setError(err.message || 'Unable to connect to the server.');
       setTickets([]);
     } finally {
-      setLoading(false);
+      if (sequence === requestSequence.current && !movingToAvailablePage) setLoading(false);
     }
-  }, [currentRequester, debouncedSearch, categoryId, requestedPriority, status, page]);
+  }, [requesterId, debouncedSearch, categoryId, requestedPriority, status, statusGroup, resolvedSince, resolvedUntil, page, token]);
 
   // Trigger fetch on filter / page / requester change
   useEffect(() => {
-    fetchTickets();
-  }, [fetchTickets]);
+    const sequence = requestSequence;
+    if (active) void fetchTickets();
+    return () => { sequence.current++; };
+  }, [fetchTickets, active]);
 
   // Clear all filters handler
   const handleClearFilters = () => {
@@ -134,11 +157,11 @@ export const MyTickets: React.FC<MyTicketsProps> = ({ onCreateTicket, onSelectTi
     setDebouncedSearch('');
     setCategoryId('');
     setRequestedPriority('');
-    setStatus('');
+    setStatus(''); setStatusGroup(''); setResolvedSince(''); setResolvedUntil('');
     setPage(1);
   };
 
-  const isFiltered = Boolean(searchInput || categoryId || requestedPriority || status);
+  const isFiltered = Boolean(searchInput || categoryId || requestedPriority || status || statusGroup || resolvedSince);
 
   // Helper to format date
   const formatDate = (isoString: string) => {
@@ -229,6 +252,7 @@ export const MyTickets: React.FC<MyTicketsProps> = ({ onCreateTicket, onSelectTi
         </div>
       </div>
 
+      {(statusGroup || resolvedSince) && <p className="alert alert-info">{statusGroup && "Active Tickets"}{resolvedSince && `Resolved from ${new Date(resolvedSince).toLocaleString()} to ${new Date(resolvedUntil).toLocaleString()}`}</p>}
       {/* Filter Toolbar Card */}
       <div className="zg-card p-3 shadow-sm mb-4">
         <div className="row g-2 align-items-center">
@@ -295,7 +319,7 @@ export const MyTickets: React.FC<MyTicketsProps> = ({ onCreateTicket, onSelectTi
               className="form-select zg-input"
               value={status}
               onChange={(e) => {
-                setStatus(e.target.value);
+                setStatus(e.target.value); setStatusGroup(''); setResolvedSince(''); setResolvedUntil('');
                 setPage(1);
               }}
               data-testid="status-filter"
@@ -304,6 +328,9 @@ export const MyTickets: React.FC<MyTicketsProps> = ({ onCreateTicket, onSelectTi
               <option value="NEW">New</option>
               <option value="OPEN">Open</option>
               <option value="IN_PROGRESS">In Progress</option>
+              <option value="WAITING_FOR_REQUESTER">Waiting for Requester</option>
+              <option value="REOPENED">Reopened</option>
+              <option value="CANCELLED">Cancelled</option>
               <option value="RESOLVED">Resolved</option>
               <option value="CLOSED">Closed</option>
             </select>
