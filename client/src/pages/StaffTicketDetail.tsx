@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { ActionsTaken, type ActionTicket } from '../components/tickets/ActionsTaken';
+import { WorkflowConfirmation } from '../components/tickets/WorkflowConfirmation';
+import { StatusHistory } from '../components/tickets/StatusHistory';
 import { useAuth } from '../context/AuthContext';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
@@ -53,6 +55,13 @@ interface NoteItem {
 interface TicketDetailData {
   id: number;
   version: number;
+  requesterResolvedIndication?: boolean;
+  requesterResolvedAt?: string | null;
+  resolutionSummary?: string | null;
+  resolvedAt?: string | null;
+  closedAt?: string | null;
+  allowedStatusTransitions?: string[];
+  resolutionGate?: { blocked: boolean; pendingActionCount: number };
   ticketNumber: string;
   summary: string;
   description: string;
@@ -102,11 +111,8 @@ export const StaffTicketDetail: React.FC<StaffTicketDetailProps> = ({ ticketId, 
 
   const [operationBusy, setOperationBusy] = useState(false);
   const [needsReload, setNeedsReload] = useState(false);
+  const [refreshError, setRefreshError] = useState('');
   const operationLock = useRef(false);
-  const onActionTicketChange = useCallback((parent: ActionTicket) => {
-    setTicket(prev => prev && parent.version >= prev.version ? { ...prev, ...parent } : prev);
-    setSelectedStatus(parent.status);
-  }, []);
 
   // Operational form states
   const [selectedOwner, setSelectedOwner] = useState<string>('');
@@ -115,11 +121,11 @@ export const StaffTicketDetail: React.FC<StaffTicketDetailProps> = ({ ticketId, 
 
   // Terminal state confirmation modal
   const [pendingStatus, setPendingStatus] = useState<string | null>(null);
-  const [terminalReason, setTerminalReason] = useState<string>('');
+  const [workflowError, setWorkflowError] = useState('');
   const [isConfirmingTerminal, setIsConfirmingTerminal] = useState(false);
 
   // Active Tab: attachments, comments, notes
-  const [activeTab, setActiveTab] = useState<'attachments' | 'comments' | 'notes' | 'actions'>('attachments');
+  const [activeTab, setActiveTab] = useState<'attachments' | 'comments' | 'notes' | 'actions' | 'history'>('attachments');
 
   // Collaboration state
   const [comments, setComments] = useState<CommentItem[]>([]);
@@ -134,9 +140,9 @@ export const StaffTicketDetail: React.FC<StaffTicketDetailProps> = ({ ticketId, 
   const [noteError, setNoteError] = useState('');
 
   // Load ticket details
-  const fetchTicket = useCallback(async () => {
-    setLoading(true);
-    setError('');
+  const fetchTicket = useCallback(async (quiet = false) => {
+    if (!quiet) { setLoading(true); setError(''); }
+    else setNeedsReload(true);
 
     try {
       const res = await fetch(`${API_BASE}/api/staff/tickets/${ticketId}`, {
@@ -153,12 +159,23 @@ export const StaffTicketDetail: React.FC<StaffTicketDetailProps> = ({ ticketId, 
       setSelectedPriority(data.itPriority || data.requestedPriority);
       setSelectedStatus(data.status);
       setNeedsReload(false);
+      setRefreshError('');
     } catch (err: any) {
-      setError(err.message || 'Unable to load ticket details.');
+      if (quiet) {
+        const message = err.message || 'Unable to refresh Ticket details.';
+        setWorkflowError(message); setRefreshError(message); setNeedsReload(true);
+      }
+      else setError(err.message || 'Unable to load ticket details.');
     } finally {
-      setLoading(false);
+      if (!quiet) setLoading(false);
     }
   }, [ticketId, token]);
+
+  const onActionTicketChange = useCallback((parent: ActionTicket) => {
+    setTicket(prev => prev && parent.version >= prev.version ? { ...prev, ...parent } : prev);
+    setSelectedStatus(parent.status);
+    void fetchTicket(true);
+  }, [fetchTicket]);
 
   // Fetch comments
   const fetchComments = useCallback(async () => {
@@ -252,6 +269,7 @@ export const StaffTicketDetail: React.FC<StaffTicketDetailProps> = ({ ticketId, 
       setSelectedOwner(String(updated.ownerId));
       setSelectedStatus(updated.status);
       showToast('success', `You claimed ticket #${updated.ticketNumber}. Status updated to ${updated.status}.`);
+      await fetchTicket(true);
     } catch (err: any) {
       showToast('danger', err.message);
     } finally { operationLock.current = false; setOperationBusy(false); }
@@ -282,6 +300,7 @@ export const StaffTicketDetail: React.FC<StaffTicketDetailProps> = ({ ticketId, 
       setSelectedOwner(newOwnerId);
       setSelectedStatus(updated.status);
       showToast('success', updated.owner ? `Ticket assigned to ${updated.owner.name}.` : 'Ticket unassigned.');
+      await fetchTicket(true);
     } catch (err: any) {
       showToast('danger', err.message);
       setSelectedOwner(ticket.ownerId ? String(ticket.ownerId) : '');
@@ -312,6 +331,7 @@ export const StaffTicketDetail: React.FC<StaffTicketDetailProps> = ({ ticketId, 
       setTicket((prev) => (prev ? { ...prev, itPriority: updated.itPriority, version: updated.version, updatedAt: updated.updatedAt } : null));
       setSelectedPriority(updated.itPriority);
       showToast('success', `IT Priority updated to ${updated.itPriority}.`);
+      await fetchTicket(true);
     } catch (err: any) {
       showToast('danger', err.message);
       setSelectedPriority(ticket.itPriority || ticket.requestedPriority);
@@ -322,9 +342,12 @@ export const StaffTicketDetail: React.FC<StaffTicketDetailProps> = ({ ticketId, 
   const handleStatusChangeSelect = (newStatus: string) => {
     if (!ticket || newStatus === ticket.status) return;
 
+    if (newStatus === 'RESOLVED' && ticket.resolutionGate?.blocked) {
+      showToast('danger', 'Complete or cancel pending actions before resolving this ticket.'); return;
+    }
     if (TERMINAL_STATUSES.includes(newStatus)) {
       setPendingStatus(newStatus);
-      setTerminalReason('');
+      setWorkflowError('');
       setIsConfirmingTerminal(true);
     } else {
       executeStatusTransition(newStatus);
@@ -341,23 +364,26 @@ export const StaffTicketDetail: React.FC<StaffTicketDetailProps> = ({ ticketId, 
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ status: targetStatus, reason, version: ticket.version }),
+        body: JSON.stringify({ status: targetStatus, version: ticket.version, ...(targetStatus === 'RESOLVED' ? { resolutionSummary: reason } : reason ? { reason } : {}) }),
       });
 
       if (!res.ok) {
         if (res.status === 409) setNeedsReload(true);
         const data = await res.json();
+        if (res.status === 422) void fetchTicket(true);
         throw new Error(data.error?.message || 'Status transition failed.');
       }
 
       const updated = await res.json();
-      setTicket((prev) => (prev ? { ...prev, status: updated.status, version: updated.version, updatedAt: updated.updatedAt } : null));
+      setTicket((prev) => (prev ? { ...prev, ...updated } : null));
       setSelectedStatus(updated.status);
       setIsConfirmingTerminal(false);
       setPendingStatus(null);
       showToast('success', `Ticket status updated to ${updated.status}.`);
+      await fetchTicket(true);
     } catch (err: any) {
       showToast('danger', err.message);
+      setWorkflowError(err.message);
       setSelectedStatus(ticket.status);
     } finally { operationLock.current = false; setOperationBusy(false); }
   };
@@ -518,7 +544,7 @@ export const StaffTicketDetail: React.FC<StaffTicketDetailProps> = ({ ticketId, 
 
   const activeAttachments = ticket.attachments.filter((a) => !a.isRemoved);
   const removedAttachments = ticket.attachments.filter((a) => a.isRemoved);
-  const permittedNextStatuses = PERMITTED_STATUS_TRANSITIONS[ticket.status] || [];
+  const permittedNextStatuses = ticket.allowedStatusTransitions ?? PERMITTED_STATUS_TRANSITIONS[ticket.status] ?? [];
 
   return (
     <div className="staff-ticket-detail-view" data-testid="staff-ticket-detail-container">
@@ -558,8 +584,14 @@ export const StaffTicketDetail: React.FC<StaffTicketDetailProps> = ({ ticketId, 
         </div>
       )}
 
-      {needsReload && <div role="alert" className="alert alert-warning">This Ticket changed. Reload and review before saving.
-        <button type="button" className="btn btn-zg-secondary ms-2" onClick={() => void fetchTicket()}>Reload Latest Ticket</button></div>}
+      {needsReload && <div role="alert" className="alert alert-warning">{refreshError ? `${refreshError}. Reload and review before saving.` : 'This Ticket changed. Reload and review before saving.'}
+        <button type="button" className="btn btn-zg-secondary ms-2" disabled={operationBusy} onClick={() => void fetchTicket(true)}>Reload Latest Ticket</button></div>}
+      {ticket.requesterResolvedIndication && <div role="status" className="alert alert-info">Requester reports that the problem appears resolved.
+        {ticket.requesterResolvedAt && <span> Sent {formatDate(ticket.requesterResolvedAt)}.</span>}
+        {['IN_PROGRESS', 'WAITING_FOR_REQUESTER'].includes(ticket.status) && ' IT review is still required.'}</div>}
+      {ticket.resolutionGate?.blocked && <div className="alert alert-warning">Complete or cancel pending actions before resolving this ticket.{' '}
+        <button type="button" className="btn btn-zg-secondary" onClick={() => setActiveTab('actions')}>View {ticket.resolutionGate.pendingActionCount} pending actions</button></div>}
+      {ticket.resolutionSummary && <div className="alert alert-success"><strong>Resolution Summary:</strong> <span style={{ whiteSpace: 'pre-wrap' }}>{ticket.resolutionSummary}</span></div>}
       {/* Operational Action Strip */}
       <div className="card shadow-sm border-0 mb-4 p-3 bg-white" data-testid="staff-operational-strip">
         <div className="row g-3 align-items-center">
@@ -644,7 +676,7 @@ export const StaffTicketDetail: React.FC<StaffTicketDetailProps> = ({ ticketId, 
             >
               <option value={ticket.status}>{ticket.status.replace(/_/g, ' ')} (Current)</option>
               {permittedNextStatuses.map((st) => (
-                <option key={st} value={st}>
+                <option key={st} value={st} disabled={st === 'RESOLVED' && ticket.resolutionGate?.blocked}>
                   ➔ {st.replace(/_/g, ' ')}
                 </option>
               ))}
@@ -656,7 +688,7 @@ export const StaffTicketDetail: React.FC<StaffTicketDetailProps> = ({ ticketId, 
       {/* Main Grid: Ticket Details (Left) + Interaction Tabs (Right) */}
       <div className="row g-4">
         {/* Left Column: Read-only Ticket Info */}
-        <div className={activeTab === 'actions' ? 'col-12' : 'col-12 col-lg-7'}>
+        <div className={['actions', 'history'].includes(activeTab) ? 'col-12' : 'col-12 col-lg-7'}>
           <div className="card shadow-sm border-0 bg-white p-3 p-md-4 mb-3" data-testid="ticket-details-card">
             {/* Ticket Identifier Header */}
             <div className="d-flex justify-content-between align-items-start border-bottom pb-3 mb-3">
@@ -732,10 +764,12 @@ export const StaffTicketDetail: React.FC<StaffTicketDetailProps> = ({ ticketId, 
         </div>
 
         {/* Right Column: Interaction Tabs (Attachments + Comments + Internal Notes) */}
-        <div className={activeTab === 'actions' ? 'col-12' : 'col-12 col-lg-5'}>
+        <div className={['actions', 'history'].includes(activeTab) ? 'col-12' : 'col-12 col-lg-5'}>
           <div className="card shadow-sm border-0 bg-white">
             <div className="card-header bg-white border-bottom-0 pb-0 pt-3">
               <ul className="nav nav-tabs card-header-tabs flex-wrap" aria-label="Ticket collaboration">
+                <li className="nav-item"><button type="button" className={`nav-link ${activeTab === 'history' ? 'active fw-bold text-success' : 'text-muted'}`}
+                  aria-pressed={activeTab === 'history'} onClick={() => setActiveTab('history')}>Status History</button></li>
                 <li className="nav-item"><button type="button" className={`nav-link ${activeTab === 'actions' ? 'active fw-bold text-success' : 'text-muted'}`}
                   aria-pressed={activeTab === 'actions'} onClick={() => setActiveTab('actions')}>Actions Taken</button></li>
                 <li className="nav-item">
@@ -772,6 +806,7 @@ export const StaffTicketDetail: React.FC<StaffTicketDetailProps> = ({ ticketId, 
             </div>
 
             <div className="card-body p-3">
+              {activeTab === 'history' && token && <StatusHistory ticketId={ticketId} token={token} version={ticket.version} />}
               {activeTab === 'actions' && token && user && <ActionsTaken ticketId={ticketId} token={token} currentUser={user}
                 ticketStatus={ticket.status} ticketVersion={ticket.version} onTicketChange={onActionTicketChange} />}
               {/* Attachments Tab */}
@@ -995,73 +1030,13 @@ export const StaffTicketDetail: React.FC<StaffTicketDetailProps> = ({ ticketId, 
         </div>
       </div>
 
-      {/* Terminal Status Confirmation Modal */}
-      {isConfirmingTerminal && pendingStatus && (
-        <div
-          className="modal show d-block"
-          tabIndex={-1}
-          role="dialog"
-          style={{ backgroundColor: 'rgba(0, 0, 0, 0.6)', backdropFilter: 'blur(3px)', zIndex: 1060 }}
-          data-testid="terminal-status-modal"
-        >
-          <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content border-0 shadow">
-              <div className="modal-header">
-                <h5 className="modal-title fw-bold text-danger">
-                  ⚠️ Confirm Terminal Status Transition
-                </h5>
-                <button
-                  type="button"
-                  className="btn-close"
-                  onClick={() => {
-                    setIsConfirmingTerminal(false);
-                    setPendingStatus(null);
-                  }}
-                ></button>
-              </div>
-              <div className="modal-body py-3">
-                <p className="small mb-3">
-                  You are about to transition ticket <strong>#{ticket.ticketNumber}</strong> to status{' '}
-                  <span className="badge bg-dark">{pendingStatus}</span>.
-                </p>
-                <div className="mb-3">
-                  <label className="form-label small fw-semibold">Resolution / Closure Reason (Optional)</label>
-                  <textarea
-                    className="form-control form-control-sm"
-                    rows={3}
-                    placeholder="Enter reason or summary of actions taken..."
-                    value={terminalReason}
-                    onChange={(e) => setTerminalReason(e.target.value)}
-                    data-testid="terminal-reason-input"
-                  ></textarea>
-                </div>
-              </div>
-              <div className="modal-footer border-top-0 d-flex justify-content-between">
-                <button
-                  type="button"
-                  className="btn btn-outline-secondary btn-sm"
-                  onClick={() => {
-                    setIsConfirmingTerminal(false);
-                    setPendingStatus(null);
-                  }}
-                  data-testid="cancel-terminal-btn"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-danger btn-sm fw-bold"
-                  onClick={() => executeStatusTransition(pendingStatus, terminalReason)}
-                  disabled={operationBusy || needsReload}
-                  data-testid="confirm-terminal-btn"
-                >
-                  Confirm & Update Status
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {isConfirmingTerminal && pendingStatus && <WorkflowConfirmation key={pendingStatus} target={pendingStatus}
+        ticketNumber={ticket.ticketNumber} busy={operationBusy} error={workflowError} conflict={needsReload}
+        available={permittedNextStatuses.includes(pendingStatus)}
+        onReload={() => { setWorkflowError(''); void fetchTicket(true); }}
+        onClose={() => { setIsConfirmingTerminal(false); setPendingStatus(null); }}
+        onConfirm={text => void executeStatusTransition(pendingStatus, text)} />}
+
     </div>
   );
 };

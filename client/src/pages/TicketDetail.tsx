@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { ActionsTaken, type ActionTicket } from '../components/tickets/ActionsTaken';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { ActionsTaken, ActionDialog, type ActionTicket } from '../components/tickets/ActionsTaken';
+import { StatusHistory } from '../components/tickets/StatusHistory';
 import { useRequester } from '../context/RequesterContext';
 import { useAuth } from '../context/AuthContext';
 
@@ -33,6 +34,9 @@ interface CommentItem {
 interface TicketDetail {
   id: number;
   version: number;
+  requesterResolvedIndication?: boolean;
+  requesterResolvedAt?: string | null;
+  resolutionSummary?: string | null;
   ticketNumber: string;
   summary: string;
   description: string;
@@ -77,7 +81,7 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({ ticketId, onBack }) 
   const [addingAttachment, setAddingAttachment] = useState(false);
   const [addAttachError, setAddAttachError] = useState('');
 
-  const [collaborationTab, setCollaborationTab] = useState<'comments' | 'actions'>('comments');
+  const [collaborationTab, setCollaborationTab] = useState<'comments' | 'actions' | 'history'>('comments');
   const onActionTicketChange = useCallback((parent: ActionTicket) => {
     setTicket(prev => prev && parent.version >= prev.version ? { ...prev, ...parent } : prev);
   }, []);
@@ -94,11 +98,12 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({ ticketId, onBack }) 
   const [resolving, setResolving] = useState(false);
   const [resolveError, setResolveError] = useState('');
   const [resolveSuccessMsg, setResolveSuccessMsg] = useState('');
+  const [resolveNeedsReload, setResolveNeedsReload] = useState(false);
+  const resolveLock = useRef(false);
 
-  const fetchTicket = useCallback(async () => {
-    if (!effectiveRequesterId && !token) return;
-    setLoading(true);
-    setError('');
+  const fetchTicket = useCallback(async (quiet = false) => {
+    if (!effectiveRequesterId && !token) return false;
+    if (!quiet) { setLoading(true); setError(''); }
     try {
       const headers: Record<string, string> = {};
       if (token) headers['Authorization'] = `Bearer ${token}`;
@@ -110,16 +115,18 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({ ticketId, onBack }) 
 
       if (!res.ok) {
         const data = await res.json();
-        setError(data.error?.message || `Error ${res.status}`);
-        setTicket(null);
-        return;
+        if (quiet) setResolveError(data.error?.message || `Error ${res.status}`);
+        else { setError(data.error?.message || `Error ${res.status}`); setTicket(null); }
+        return false;
       }
       const data = await res.json();
-      setTicket(data);
+      setTicket(data); return true;
     } catch (err: any) {
-      setError('Network error: Could not load ticket details.');
+      if (quiet) setResolveError('Network error: Could not refresh Ticket.');
+      else setError('Network error: Could not load ticket details.');
+      return false;
     } finally {
-      setLoading(false);
+      if (!quiet) setLoading(false);
     }
   }, [ticketId, effectiveRequesterId, token]);
 
@@ -191,7 +198,8 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({ ticketId, onBack }) 
 
   // ── Problem Appears Resolved (BR-11) ─────────────────────────────────────
   const handleIndicateResolved = async () => {
-    setResolving(true);
+    if (resolveLock.current || resolveNeedsReload || !ticket || ticket.requesterResolvedIndication) return;
+    resolveLock.current = true; setResolving(true);
     setResolveError('');
     try {
       const headers: Record<string, string> = {};
@@ -205,18 +213,19 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({ ticketId, onBack }) 
 
       if (!res.ok) {
         const data = await res.json();
+        if (res.status === 409) setResolveNeedsReload(true);
         throw new Error(data.error?.message || 'Failed to indicate resolution.');
       }
 
       const updated = await res.json();
-      setTicket((prev) => (prev ? { ...prev, status: updated.status, version: updated.version, updatedAt: updated.updatedAt } : null));
+      setTicket((prev) => (prev ? { ...prev, ...updated } : null));
       setResolveModalOpen(false);
-      setResolveSuccessMsg('Thank you! Your ticket status has been updated to Resolved.');
+      setResolveSuccessMsg('Sent to IT for review');
       setTimeout(() => setResolveSuccessMsg(''), 5000);
     } catch (err: any) {
       setResolveError(err.message || 'Failed to update ticket status.');
     } finally {
-      setResolving(false);
+      resolveLock.current = false; setResolving(false);
     }
   };
 
@@ -435,11 +444,11 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({ ticketId, onBack }) 
         </div>
         <div className="d-flex align-items-center gap-2">
           {/* Problem Appears Resolved Action Button (BR-11, FR-08) */}
-          {(ticket.status === 'IN_PROGRESS' || ticket.status === 'WAITING_FOR_REQUESTER') && (
+          {token && auth?.user?.role === 'REQUESTER' && !ticket.requesterResolvedIndication && (ticket.status === 'IN_PROGRESS' || ticket.status === 'WAITING_FOR_REQUESTER') && (
             <button
               type="button"
               className="btn btn-sm btn-success text-nowrap fw-bold"
-              onClick={() => setResolveModalOpen(true)}
+              onClick={() => { setResolveError(''); setResolveNeedsReload(false); setResolveModalOpen(true); }}
               data-testid="indicate-resolved-btn"
             >
               ✅ Problem Appears Resolved
@@ -451,6 +460,10 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({ ticketId, onBack }) 
         </div>
       </div>
 
+      {ticket.requesterResolvedIndication && <p role="status" className="alert alert-info">Sent to IT for review.
+        {ticket.requesterResolvedAt && <span> {new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'long' }).format(new Date(ticket.requesterResolvedAt))}.</span>}
+        {['IN_PROGRESS', 'WAITING_FOR_REQUESTER'].includes(ticket.status) && ' IT will review the work before updating the Ticket status.'}</p>}
+      {ticket.resolutionSummary && <div className="alert alert-success"><strong>Resolution Summary:</strong> <span style={{ whiteSpace: 'pre-wrap' }}>{ticket.resolutionSummary}</span></div>}
       {/* Success Toast / Notification */}
       {resolveSuccessMsg && (
         <div className="alert alert-success py-2 small mb-3 shadow-sm d-flex justify-content-between align-items-center" role="alert">
@@ -666,7 +679,9 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({ ticketId, onBack }) 
         <nav className="nav nav-tabs mb-3" aria-label="Ticket collaboration">
           <button type="button" className={`nav-link ${collaborationTab === 'comments' ? 'active' : ''}`} aria-pressed={collaborationTab === 'comments'} onClick={() => setCollaborationTab('comments')}>Public Comments</button>
           <button type="button" className={`nav-link ${collaborationTab === 'actions' ? 'active' : ''}`} aria-pressed={collaborationTab === 'actions'} onClick={() => setCollaborationTab('actions')}>Actions Taken</button>
+          <button type="button" className={`nav-link ${collaborationTab === 'history' ? 'active' : ''}`} aria-pressed={collaborationTab === 'history'} onClick={() => setCollaborationTab('history')}>Status History</button>
         </nav>
+        {collaborationTab === 'history' && <div className="zg-card p-4 mb-4"><StatusHistory ticketId={ticketId} token={token} version={ticket.version} /></div>}
         {collaborationTab === 'actions' && <div className="zg-card p-4 mb-4"><ActionsTaken ticketId={ticketId} token={token} currentUser={auth.user}
           ticketStatus={ticket.status} ticketVersion={ticket.version} onTicketChange={onActionTicketChange} /></div>}
       </>}
@@ -836,63 +851,21 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({ ticketId, onBack }) 
         </div>
       )}
 
-      {/* Problem Appears Resolved Confirmation Modal */}
-      {resolveModalOpen && (
-        <div
-          className="modal show d-block"
-          tabIndex={-1}
-          role="dialog"
-          style={{ backgroundColor: 'rgba(0, 0, 0, 0.6)', backdropFilter: 'blur(3px)' }}
-          data-testid="confirm-resolve-modal"
-        >
-          <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content border-0 shadow">
-              <div className="modal-header">
-                <h5 className="modal-title fw-bold text-success">
-                  ✅ Confirm Issue Resolution
-                </h5>
-                <button
-                  type="button"
-                  className="btn-close"
-                  onClick={() => setResolveModalOpen(false)}
-                  disabled={resolving}
-                ></button>
-              </div>
-              <div className="modal-body py-3">
-                <p className="small mb-2">
-                  Are you sure your issue has been resolved?
-                </p>
-                <p className="small text-muted mb-0">
-                  This will transition ticket <strong>#{ticket.ticketNumber}</strong> to <strong>Resolved</strong> status and notify the IT support team.
-                </p>
-                {resolveError && (
-                  <div className="alert alert-danger py-2 small mt-3 mb-0">{resolveError}</div>
-                )}
-              </div>
-              <div className="modal-footer border-top-0 d-flex justify-content-between">
-                <button
-                  type="button"
-                  className="btn btn-outline-secondary btn-sm"
-                  onClick={() => setResolveModalOpen(false)}
-                  disabled={resolving}
-                  data-testid="cancel-resolve-btn"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-success btn-sm fw-bold px-3"
-                  onClick={handleIndicateResolved}
-                  disabled={resolving}
-                  data-testid="confirm-resolve-btn"
-                >
-                  {resolving ? 'Updating...' : 'Yes, Problem Is Resolved'}
-                </button>
-              </div>
-            </div>
-          </div>
+      {resolveModalOpen && <ActionDialog title="Confirm Resolution Indication" testId="confirm-resolve-modal" onClose={() => { if (!resolving) setResolveModalOpen(false); }}>
+        <p>Tell IT that the problem appears resolved? IT will review the work before updating the ticket status.</p>
+        {resolveError && <div role="alert" className="alert alert-danger">{resolveError}</div>}
+        {resolveNeedsReload && <button type="button" className="btn btn-zg-secondary mb-3" disabled={resolving} onClick={async () => {
+          if (await fetchTicket(true)) { setResolveNeedsReload(false); setResolveError(''); }
+        }}>Reload Latest Ticket</button>}
+        {ticket.requesterResolvedIndication && <p>IT has already received this indication.</p>}
+        <div className="d-flex justify-content-between gap-3">
+          <button type="button" className="btn btn-zg-secondary" disabled={resolving} onClick={() => setResolveModalOpen(false)} data-testid="cancel-resolve-btn">Cancel</button>
+          <button type="button" className="btn btn-zg-primary" onClick={() => void handleIndicateResolved()}
+            disabled={resolving || resolveNeedsReload || !!ticket.requesterResolvedIndication || !['IN_PROGRESS', 'WAITING_FOR_REQUESTER'].includes(ticket.status)}
+            data-testid="confirm-resolve-btn">{resolving ? 'Sending...' : 'Send to IT for Review'}</button>
         </div>
-      )}
+      </ActionDialog>}
+
     </div>
   );
 };
