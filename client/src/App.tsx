@@ -11,6 +11,7 @@ import { MyTickets } from './pages/MyTickets';
 import { TicketDetail } from './pages/TicketDetail';
 import { StaffTicketQueue } from './pages/StaffTicketQueue';
 import { StaffTicketDetail } from './pages/StaffTicketDetail';
+import { Dashboard } from './pages/Dashboard';
 
 export interface Category {
   id: number;
@@ -18,6 +19,7 @@ export interface Category {
 }
 
 export type AppView =
+  | 'dashboard'
   | 'my-tickets'
   | 'create-ticket'
   | 'ticket-detail'
@@ -26,23 +28,26 @@ export type AppView =
   | 'staff-ticket-detail';
 
 function AppContent() {
-  const { user } = useAuth();
+  const { user, isSessionChecking } = useAuth();
   const { currentRequester, setRequester, clearRequester } = useRequester();
 
   const isTestEnv = typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.MODE === 'test';
 
   const getDefaultView = (role?: string): AppView => {
-    if (role === 'ADMINISTRATOR') return 'user-management';
-    if (role === 'IT_STAFF') return 'ticket-queue';
+    if (role) return 'dashboard';
     return 'my-tickets';
   };
 
   const [currentView, setCurrentView] = useState<AppView>(() => getDefaultView(user?.role));
   const [selectedTicketId, setSelectedTicketId] = useState<number | null>(null);
+  const [detailSource, setDetailSource] = useState<AppView>('dashboard');
+  const [actionTarget, setActionTarget] = useState<{ id: number; page: number } | undefined>();
+  const [listQuery, setListQuery] = useState<Record<string, string | number>>({});
+  const [listKey, setListKey] = useState(0);
 
   useEffect(() => {
     if (user) {
-      setCurrentView(getDefaultView(user.role));
+      setCurrentView(getDefaultView(user.role)); setListQuery({}); setListKey(x => x + 1); setSelectedTicketId(null); setActionTarget(undefined);
       if (user.role === 'REQUESTER') {
         setRequester({
           id: user.id,
@@ -71,16 +76,20 @@ function AppContent() {
 
   return (
     <div className="min-vh-100 d-flex flex-column" style={{ backgroundColor: 'var(--zg-bg)' }}>
-      <Navbar currentView={currentView} onNavigate={setCurrentView} />
+      {!isSessionChecking && <><Navbar currentView={currentView} onNavigate={setCurrentView} />
       <ChangePasswordModal />
-      <RequesterSelector />
+      <RequesterSelector /></>}
 
       <main className="container py-4 flex-grow-1">
         {/* Unauthenticated Login Screen */}
-        {!user && (!isTestEnv || !currentRequester) ? (
+        {isSessionChecking ? <p role="status">Checking session...</p> : !user && (!isTestEnv || !currentRequester) ? (
           <Login />
-        ) : (
+        ) : user?.isPasswordChangeRequired ? null : (
           <>
+            {user && !user.isPasswordChangeRequired && (currentView === 'dashboard' || (detailSource === 'dashboard' && ['ticket-detail', 'staff-ticket-detail'].includes(currentView))) && <div hidden={currentView !== 'dashboard'}><Dashboard key={`${user.id}:${user.role}`} active={currentView === 'dashboard'}
+              onCreateTicket={() => setCurrentView('create-ticket')}
+              onNavigate={destination => { setListQuery(destination.query); setListKey(x => x + 1); setCurrentView(destination.view); }}
+              onOpenTicket={(id, action) => { setDetailSource('dashboard'); setActionTarget(action); setSelectedTicketId(id); setCurrentView(user.role === 'REQUESTER' ? 'ticket-detail' : 'staff-ticket-detail'); }} /></div>}
             {/* Administrator Screens */}
             {user?.role === 'ADMINISTRATOR' && currentView === 'user-management' && (
               <UserManagement />
@@ -89,14 +98,14 @@ function AppContent() {
             {/* Requester Screens */}
             {(user?.role === 'REQUESTER' || (isTestEnv && !user && currentRequester)) && (
               <>
-                {currentView === 'my-tickets' && (
-                  <MyTickets
+                {(currentView === 'my-tickets' || (currentView === 'ticket-detail' && detailSource === 'my-tickets')) && (
+                  <div hidden={currentView !== 'my-tickets'}><MyTickets key={listKey} initialQuery={listQuery} active={currentView === 'my-tickets'}
                     onCreateTicket={() => setCurrentView('create-ticket')}
                     onSelectTicket={(ticketId) => {
-                      setSelectedTicketId(ticketId);
+                      setDetailSource('my-tickets'); setSelectedTicketId(ticketId);
                       setCurrentView('ticket-detail');
                     }}
-                  />
+                  /></div>
                 )}
 
                 {currentView === 'create-ticket' && (
@@ -113,7 +122,7 @@ function AppContent() {
                     ticketId={selectedTicketId}
                     onBack={() => {
                       setSelectedTicketId(null);
-                      setCurrentView('my-tickets');
+                      setCurrentView(detailSource);
                     }}
                   />
                 )}
@@ -123,21 +132,22 @@ function AppContent() {
             {/* IT Staff & Admin Queue Views */}
             {(user?.role === 'IT_STAFF' || user?.role === 'ADMINISTRATOR') && (
               <>
-                {currentView === 'ticket-queue' && (
-                  <StaffTicketQueue
+                {(currentView === 'ticket-queue' || (currentView === 'staff-ticket-detail' && detailSource === 'ticket-queue')) && (
+                  <div hidden={currentView !== 'ticket-queue'}><StaffTicketQueue key={listKey} initialQuery={listQuery} active={currentView === 'ticket-queue'}
                     onSelectTicket={(ticketId) => {
-                      setSelectedTicketId(ticketId);
+                      setDetailSource('ticket-queue'); setActionTarget(undefined); setSelectedTicketId(ticketId);
                       setCurrentView('staff-ticket-detail');
                     }}
-                  />
+                  /></div>
                 )}
 
                 {currentView === 'staff-ticket-detail' && selectedTicketId && (
                   <StaffTicketDetail
                     ticketId={selectedTicketId}
+                    actionTarget={actionTarget}
                     onBack={() => {
                       setSelectedTicketId(null);
-                      setCurrentView('ticket-queue');
+                      setCurrentView(detailSource);
                     }}
                   />
                 )}

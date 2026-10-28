@@ -25,13 +25,8 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, onNavigate }) => {
 
   const handleBrandClick = (e: React.MouseEvent) => {
     e.preventDefault();
-    if (user?.role === 'ADMINISTRATOR') {
-      onNavigate('user-management');
-    } else if (user?.role === 'IT_STAFF') {
-      onNavigate('ticket-queue');
-    } else {
-      onNavigate('my-tickets');
-    }
+    if (user?.isPasswordChangeRequired) return;
+    onNavigate(user ? 'dashboard' : 'my-tickets');
   };
 
   return (
@@ -50,8 +45,9 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, onNavigate }) => {
         </a>
 
         {/* Navigation Tabs for Authenticated User */}
-        {user ? (
-          <div className="d-flex align-items-center justify-content-center gap-2 my-1 my-md-0">
+        {user && !user.isPasswordChangeRequired ? (
+          <div className="d-flex flex-wrap align-items-center justify-content-center gap-2 my-1 my-md-0">
+            <button type="button" className={`btn zg-nav-link ${currentView === 'dashboard' ? 'active' : ''}`} aria-current={currentView === 'dashboard' ? 'page' : undefined} onClick={() => onNavigate('dashboard')}>Dashboard</button>
             {user.role === 'REQUESTER' && (
               <>
                 <button
@@ -59,6 +55,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, onNavigate }) => {
                   className={`btn zg-nav-link ${
                     currentView === 'my-tickets' || currentView === 'ticket-detail' ? 'active' : ''
                   }`}
+                  aria-current={currentView === 'my-tickets' || currentView === 'ticket-detail' ? 'page' : undefined}
                   onClick={() => onNavigate('my-tickets')}
                   data-testid="nav-my-tickets"
                 >
@@ -67,6 +64,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, onNavigate }) => {
                 <button
                   type="button"
                   className={`btn zg-nav-link ${currentView === 'create-ticket' ? 'active' : ''}`}
+                  aria-current={currentView === 'create-ticket' ? 'page' : undefined}
                   onClick={() => onNavigate('create-ticket')}
                   data-testid="nav-create-ticket"
                 >
@@ -81,6 +79,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, onNavigate }) => {
                 className={`btn zg-nav-link ${
                   currentView === 'ticket-queue' || currentView === 'staff-ticket-detail' ? 'active' : ''
                 }`}
+                aria-current={currentView === 'ticket-queue' || currentView === 'staff-ticket-detail' ? 'page' : undefined}
                 onClick={() => onNavigate('ticket-queue')}
                 data-testid="nav-ticket-queue"
               >
@@ -92,6 +91,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, onNavigate }) => {
               <button
                 type="button"
                 className={`btn zg-nav-link ${currentView === 'user-management' ? 'active' : ''}`}
+                aria-current={currentView === 'user-management' ? 'page' : undefined}
                 onClick={() => onNavigate('user-management')}
                 data-testid="nav-user-management"
               >
@@ -99,14 +99,15 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, onNavigate }) => {
               </button>
             )}
           </div>
-        ) : isTestEnv && currentRequester ? (
+        ) : !user && isTestEnv && currentRequester ? (
           /* Fallback for Lab 2 Requester Context (Tests Only) */
-          <div className="d-flex align-items-center justify-content-center gap-2 my-1 my-md-0">
+          <div className="d-flex flex-wrap align-items-center justify-content-center gap-2 my-1 my-md-0">
             <button
               type="button"
               className={`btn zg-nav-link ${
                 currentView === 'my-tickets' || currentView === 'ticket-detail' ? 'active' : ''
               }`}
+              aria-current={currentView === 'my-tickets' || currentView === 'ticket-detail' ? 'page' : undefined}
               onClick={() => onNavigate('my-tickets')}
               data-testid="nav-my-tickets"
             >
@@ -115,6 +116,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, onNavigate }) => {
             <button
               type="button"
               className={`btn zg-nav-link ${currentView === 'create-ticket' ? 'active' : ''}`}
+              aria-current={currentView === 'create-ticket' ? 'page' : undefined}
               onClick={() => onNavigate('create-ticket')}
               data-testid="nav-create-ticket"
             >

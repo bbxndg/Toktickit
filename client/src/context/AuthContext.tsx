@@ -16,6 +16,7 @@ interface AuthContextType {
   user: User | null;
   token: string | null;
   isLoading: boolean;
+  isSessionChecking: boolean;
   error: string | null;
   login: (email: string, password: string) => Promise<boolean>;
   logout: () => void;
@@ -48,13 +49,17 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   });
 
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isSessionChecking, setIsSessionChecking] = useState<boolean>(() => Boolean(token));
   const [error, setError] = useState<string | null>(null);
 
   // Sync /me on load if token exists
   useEffect(() => {
     if (token) {
+      const controller = new AbortController();
+      let active = true;
       fetch(`${API_BASE}/api/auth/me`, {
         headers: { Authorization: `Bearer ${token}` },
+        signal: controller.signal,
       })
         .then((res) => {
           if (res.ok) {
@@ -63,13 +68,16 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           throw new Error('Session expired');
         })
         .then((userData: User) => {
+          if (!active) return;
           setUser(userData);
           localStorage.setItem(USER_KEY, JSON.stringify(userData));
         })
         .catch(() => {
-          logout();
-        });
+          if (active) logout();
+        }).finally(() => { if (active) setIsSessionChecking(false); });
+      return () => { active = false; controller.abort(); };
     }
+    setIsSessionChecking(false);
   }, [token]);
 
   const login = async (email: string, password: string): Promise<boolean> => {
@@ -116,6 +124,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
     setToken(null);
     setUser(null);
+    setIsSessionChecking(false);
     setError(null);
     try {
       localStorage.removeItem(TOKEN_KEY);
@@ -175,6 +184,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         user,
         token,
         isLoading,
+        isSessionChecking,
         error,
         login,
         logout,
