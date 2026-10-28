@@ -87,6 +87,48 @@ describe('Lab 4 Actions Taken UI (UI-01, UI-05, UI-06)', () => {
     const calls = vi.mocked(fetch).mock.calls.filter(([, init]) => init?.method === 'PATCH');
     expect(JSON.parse(calls.at(-1)![1]!.body as string)).toMatchObject({ version: 2, ticketVersion: 6, description: 'Keep this draft' });
   });
+  it.each(['PLANNED', 'COMPLETED', 'CANCELLED'] as const)('reconciles a %s draft after another user advances the action', async draftStatus => {
+    let stale = true;
+    vi.mocked(fetch).mockImplementation(async (url, init) => {
+      if (url.toString().includes('/staff/members')) return response([user]);
+      if (init?.method === 'PATCH') {
+        if (stale) { stale = false; return response({ error: { code: 'STALE_UPDATE', message: 'Changed by another staff member' } }, 409); }
+        return response({ data: { ...action, ...JSON.parse(init.body as string), version: 3 }, ticket: { ...parent, version: 7 } });
+      }
+      return response({ data: [{ ...action, status: stale ? 'PLANNED' : 'IN_PROGRESS', version: stale ? 1 : 2 }],
+        ticket: { ...parent, version: stale ? 4 : 6 }, pagination: { page: 1, totalPages: 1, totalItems: 1 } });
+    });
+    const actor = userEvent.setup(); mount();
+    await actor.click((await screen.findAllByRole('button', { name: 'Edit' }))[0]);
+    await actor.clear(screen.getByLabelText(/Action Description/));
+    await actor.type(screen.getByLabelText(/Action Description/), 'Keep my investigation notes');
+    await actor.type(screen.getByLabelText(/Attachment Notes/), 'Keep supporting evidence');
+    await actor.selectOptions(screen.getByLabelText('Status'), draftStatus);
+    if (draftStatus === 'COMPLETED') await actor.type(screen.getByLabelText(/Result/), 'Connection restored');
+    if (draftStatus === 'CANCELLED') await actor.type(screen.getByLabelText(/Cancellation Reason/), 'Work is no longer required');
+    await actor.click(screen.getByRole('button', { name: 'Save Changes' }));
+    if (draftStatus !== 'PLANNED') await actor.click(screen.getByRole('button', { name: draftStatus === 'COMPLETED' ? 'Confirm Completion' : 'Confirm Cancellation' }));
+    await actor.click(await screen.findByRole('button', { name: 'Reload Latest' }));
+
+    const expectedStatus = draftStatus === 'PLANNED' ? 'IN_PROGRESS' : draftStatus;
+    expect(screen.getByLabelText('Status')).toHaveValue(expectedStatus);
+    expect(screen.getByLabelText(/Action Description/)).toHaveValue('Keep my investigation notes');
+    expect(screen.getByLabelText(/Attachment Notes/)).toHaveValue('Keep supporting evidence');
+    const dialog = screen.getByRole('dialog');
+    if (draftStatus === 'PLANNED') expect(within(dialog).getByRole('status')).toHaveTextContent(/status.*Planned.*In Progress.*review/i);
+    else expect(within(dialog).queryByRole('status')).not.toBeInTheDocument();
+    // Reload must not save automatically; terminal drafts still need explicit confirmation.
+    expect(vi.mocked(fetch).mock.calls.filter(([, init]) => init?.method === 'PATCH')).toHaveLength(1);
+    await actor.click(screen.getByRole('button', { name: 'Save Changes' }));
+    if (draftStatus !== 'PLANNED') {
+      expect(vi.mocked(fetch).mock.calls.filter(([, init]) => init?.method === 'PATCH')).toHaveLength(1);
+      await actor.click(screen.getByRole('button', { name: draftStatus === 'COMPLETED' ? 'Confirm Completion' : 'Confirm Cancellation' }));
+    }
+    await waitFor(() => expect(onTicketChange).toHaveBeenCalledWith(expect.objectContaining({ version: 7 })));
+    const calls = vi.mocked(fetch).mock.calls.filter(([, init]) => init?.method === 'PATCH');
+    expect(JSON.parse(calls.at(-1)![1]!.body as string)).toMatchObject({ version: 2, ticketVersion: 6,
+      status: expectedStatus, description: 'Keep my investigation notes', attachmentNotes: 'Keep supporting evidence' });
+  });
   it.each(['COMPLETED', 'CANCELLED'])('requires explicit %s confirmation and traps keyboard focus', async status => {
     const actor = userEvent.setup(); mount(); await screen.findAllByText(action.description);
     await actor.click(screen.getAllByRole('button', { name: 'Edit' })[0]);

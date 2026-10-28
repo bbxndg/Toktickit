@@ -60,6 +60,7 @@ function ActionSession({ ticketId, token, currentUser, ticketStatus, ticketVersi
   const [errors, setErrors] = useState<Record<string, string>>({}), [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false), [conflict, setConflict] = useState(false), [uncertain, setUncertain] = useState(false), [confirming, setConfirming] = useState(false);
   const [discarding, setDiscarding] = useState(false);
+  const [statusNotice, setStatusNotice] = useState('');
   const alive = useRef(true), inFlight = useRef(false), controllers = useRef(new Set<AbortController>());
   const key = useRef(''), parentVersion = useRef(ticketVersion), retry = useRef<{ url: string; method: string; body: string } | null>(null);
   const initialDraft = useRef(''); const form = useRef<HTMLFormElement>(null); const discardPrompt = useRef<HTMLDivElement>(null); const fieldPrefix = useId();
@@ -105,7 +106,7 @@ function ActionSession({ ticketId, token, currentUser, ticketStatus, ticketVersi
       attachmentNotes: action?.attachmentNotes || '', cancelReason: action?.cancelReason || '' };
     setEditing(action || null); setDraft(value); initialDraft.current = JSON.stringify(value);
     parentVersion.current = result?.ticket.version ?? ticketVersion; key.current = crypto.randomUUID(); retry.current = null;
-    setErrors({}); setConflict(false); setUncertain(false); setConfirming(false); setDiscarding(false); setMessage(''); void loadMembers();
+    setErrors({}); setConflict(false); setUncertain(false); setConfirming(false); setDiscarding(false); setStatusNotice(''); setMessage(''); void loadMembers();
   }
   function close() {
     if (inFlight.current) return;
@@ -115,6 +116,7 @@ function ActionSession({ ticketId, token, currentUser, ticketStatus, ticketVersi
   function change<K extends keyof Draft>(field: K, value: Draft[K]) {
     setDraft(prev => prev ? { ...prev, [field]: value, ...(field === 'followUpRequired' && !value ? { followUpNote: '' } : {}) } : null);
     setErrors(prev => ({ ...prev, [field]: '' })); setConfirming(false); setDiscarding(false);
+    if (field === 'status') setStatusNotice('');
   }
   function validate() {
     if (!draft) return false;
@@ -169,9 +171,14 @@ function ActionSession({ ticketId, token, currentUser, ticketStatus, ticketVersi
     try {
       const latest = await getPage(page); if (!alive.current) return;
       setResult(latest); onTicketChange(latest.ticket); parentVersion.current = latest.ticket.version;
+      setStatusNotice(''); setConfirming(false);
       if (editing) {
         const row = latest.data.find(item => item.id === editing.id);
         if (!row || !next[row.status].length) { setErrors({ form: 'This action is now read-only or unavailable. Your draft is retained for review.' }); return; }
+        if (draft && draft.status !== row.status && !next[row.status].includes(draft.status)) {
+          setDraft(previous => previous ? { ...previous, status: row.status } : null);
+          setStatusNotice(`Your previous status (${label(draft.status)}) is no longer available. Status has been updated to ${label(row.status)}. Your other entries are unchanged. Review your draft before saving.`);
+        }
         setEditing(row);
       }
       setConflict(false); setErrors({}); setMessage('Latest information loaded. Review your draft before saving.');
@@ -221,6 +228,7 @@ function ActionSession({ ticketId, token, currentUser, ticketStatus, ticketVersi
       <p className="alert alert-info">Actions Taken are visible to the Requester. Use Internal Notes for confidential information.</p>
       <p className="text-muted">Fields marked * are required.</p>
       {errors.form && <div className="alert alert-danger" role="alert">{errors.form}</div>}
+      {statusNotice && <div className="alert alert-info" role="status">{statusNotice}</div>}
       {conflict && <button type="button" className="btn btn-zg-secondary mb-3" disabled={busy} onClick={() => void reloadLatest()}>Reload Latest</button>}
       {discarding && <div ref={discardPrompt} role="alert" tabIndex={-1} className="alert alert-warning">
         <p>{uncertain ? 'The previous save may have succeeded. Close this draft and review the recorded actions?' : 'Discard unsaved changes?'}</p>
