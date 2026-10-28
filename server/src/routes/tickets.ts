@@ -4,6 +4,9 @@ import multer from 'multer';
 import { uploadAttachments } from '../utils/fileUpload';
 import { generateTicketNumber } from '../utils/ticketNumber';
 import { verifyToken } from '../utils/auth';
+import { authenticate, enforcePasswordChange, requireRole, AuthenticatedRequest } from '../middleware/auth';
+import { dashboardFilters } from '../utils/dashboardFilters';
+import { ApiError, sendApiError } from '../utils/ticketWrites';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -50,7 +53,7 @@ const handleUpload = (req: Request, res: Response, next: NextFunction) => {
 };
 
 // GET /api/tickets - Query paginated tickets with filtering, searching, and sorting
-router.get('/tickets', async (req: Request, res: Response) => {
+router.get('/tickets', authenticate, enforcePasswordChange, requireRole('REQUESTER'), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const {
       requesterId,
@@ -64,19 +67,7 @@ router.get('/tickets', async (req: Request, res: Response) => {
       pageSize,
     } = req.query;
 
-    let parsedRequesterId: number | undefined;
-
-    const authHeader = req.headers.authorization;
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      const payload = verifyToken(authHeader.split(' ')[1]);
-      if (payload && payload.role === 'REQUESTER') {
-        parsedRequesterId = payload.id;
-      }
-    }
-
-    if (!parsedRequesterId) {
-      parsedRequesterId = parseInt(requesterId as string, 10);
-    }
+    const parsedRequesterId = req.user!.id;
 
     if (!parsedRequesterId || isNaN(parsedRequesterId)) {
       return res.status(400).json({
@@ -90,6 +81,7 @@ router.get('/tickets', async (req: Request, res: Response) => {
 
     // 2. Build where filter clause
     const where: any = {
+      ...dashboardFilters(req.query, false),
       requesterId: parsedRequesterId,
     };
 
@@ -116,13 +108,6 @@ router.get('/tickets', async (req: Request, res: Response) => {
       }
     }
 
-    if (status && typeof status === 'string') {
-      const statusUpper = status.toUpperCase() as TicketStatus;
-      const validStatuses: TicketStatus[] = ['NEW', 'OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED'];
-      if (validStatuses.includes(statusUpper)) {
-        where.status = statusUpper;
-      }
-    }
 
     // 3. Sorting and pagination parameters
     const validSortFields = ['createdAt', 'ticketNumber', 'summary', 'status', 'requestedPriority', 'updatedAt'];
@@ -138,7 +123,7 @@ router.get('/tickets', async (req: Request, res: Response) => {
       prisma.ticket.count({ where }),
       prisma.ticket.findMany({
         where,
-        orderBy: { [sortField]: sortDirection },
+        orderBy: [{ [sortField]: sortDirection }, { id: sortDirection }],
         skip,
         take: limitNum,
         include: {
@@ -181,6 +166,7 @@ router.get('/tickets', async (req: Request, res: Response) => {
       },
     });
   } catch (error) {
+    if (error instanceof ApiError) return sendApiError(res, error);
     console.error('Failed to fetch tickets:', error);
     res.status(500).json({
       error: {

@@ -3,6 +3,7 @@ import { PrismaClient, Role, Priority, TicketStatus, Prisma } from '@prisma/clie
 import { authenticate, enforcePasswordChange, requireRole, AuthenticatedRequest } from '../middleware/auth';
 
 import { ApiError, bodyFields, checkVersion, integer, invalid, lockTicket, pathId, sendApiError } from '../utils/ticketWrites';
+import { dashboardFilters } from '../utils/dashboardFilters';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -58,7 +59,7 @@ router.get('/staff/tickets', async (req: AuthenticatedRequest, res: Response) =>
       pageSize,
     } = req.query;
 
-    const where: any = {};
+    const where: any = dashboardFilters(req.query, true);
 
     // 1. Search keyword across ticketNumber and summary
     if (search && typeof search === 'string' && search.trim() !== '') {
@@ -85,20 +86,8 @@ router.get('/staff/tickets', async (req: AuthenticatedRequest, res: Response) =>
       }
     }
 
-    if (itPriority && typeof itPriority === 'string') {
-      const prio = itPriority.toUpperCase() as Priority;
-      if (Object.values(Priority).includes(prio)) {
-        where.itPriority = prio;
-      }
-    }
 
     // 4. Status filter
-    if (status && typeof status === 'string') {
-      const st = status.toUpperCase() as TicketStatus;
-      if (Object.values(TicketStatus).includes(st)) {
-        where.status = st;
-      }
-    }
 
     // 5. Owner filter
     if (ownerId !== undefined && ownerId !== '') {
@@ -127,7 +116,7 @@ router.get('/staff/tickets', async (req: AuthenticatedRequest, res: Response) =>
           where,
           skip,
           take: ps,
-          orderBy: { [finalSortBy]: finalSortOrder },
+          orderBy: [{ [finalSortBy]: finalSortOrder }, { id: finalSortOrder }],
           include: {
             category: { select: { id: true, name: true } },
             relatedSystem: { select: { id: true, name: true } },
@@ -178,6 +167,7 @@ router.get('/staff/tickets', async (req: AuthenticatedRequest, res: Response) =>
       },
     });
   } catch (error) {
+    if (error instanceof ApiError) return sendApiError(res, error);
     console.error('Failed to query IT Staff Ticket Queue:', error);
     return res.status(500).json({
       error: {
