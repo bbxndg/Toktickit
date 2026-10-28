@@ -276,7 +276,8 @@ describe('Lab 3: Comments, Notes & Requester Resolution APIs (API-08, API-16, AP
         .send({ version: (await prisma.ticket.findUniqueOrThrow({ where: { id: testTicket.id } })).version });
 
       expect(res.status).toBe(200);
-      expect(res.body.status).toBe('RESOLVED');
+      expect(res.body.status).toBe('IN_PROGRESS');
+      expect(res.body.requesterResolvedAt).toBeTruthy();
       expect(res.body.requesterResolvedIndication).toBe(true);
     });
 

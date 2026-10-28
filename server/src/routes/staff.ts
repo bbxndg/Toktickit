@@ -1,5 +1,5 @@
 import { Router, Response } from 'express';
-import { PrismaClient, Role, Priority, TicketStatus } from '@prisma/client';
+import { PrismaClient, Role, Priority, TicketStatus, Prisma } from '@prisma/client';
 import { authenticate, enforcePasswordChange, requireRole, AuthenticatedRequest } from '../middleware/auth';
 
 import { ApiError, bodyFields, checkVersion, integer, invalid, lockTicket, pathId, sendApiError } from '../utils/ticketWrites';
@@ -7,17 +7,8 @@ import { ApiError, bodyFields, checkVersion, integer, invalid, lockTicket, pathI
 const router = Router();
 const prisma = new PrismaClient();
 
-// Permitted status transitions per BR-10
-export const PERMITTED_STATUS_TRANSITIONS: Record<TicketStatus, TicketStatus[]> = {
-  [TicketStatus.NEW]: [TicketStatus.OPEN, TicketStatus.IN_PROGRESS, TicketStatus.CANCELLED],
-  [TicketStatus.OPEN]: [TicketStatus.IN_PROGRESS, TicketStatus.WAITING_FOR_REQUESTER, TicketStatus.RESOLVED, TicketStatus.CANCELLED],
-  [TicketStatus.IN_PROGRESS]: [TicketStatus.WAITING_FOR_REQUESTER, TicketStatus.RESOLVED, TicketStatus.CANCELLED],
-  [TicketStatus.WAITING_FOR_REQUESTER]: [TicketStatus.IN_PROGRESS, TicketStatus.RESOLVED, TicketStatus.CANCELLED],
-  [TicketStatus.RESOLVED]: [TicketStatus.CLOSED, TicketStatus.REOPENED],
-  [TicketStatus.CLOSED]: [], // Terminal state
-  [TicketStatus.REOPENED]: [TicketStatus.IN_PROGRESS, TicketStatus.WAITING_FOR_REQUESTER, TicketStatus.RESOLVED, TicketStatus.CANCELLED],
-  [TicketStatus.CANCELLED]: [], // Terminal state
-};
+import { TICKET_TRANSITIONS, pendingActionsWhere, prepareTransition, workflowDetail, workflowFields } from '../utils/ticketWorkflow';
+export const PERMITTED_STATUS_TRANSITIONS = TICKET_TRANSITIONS;
 
 // Apply authentication and role check (IT_STAFF and ADMINISTRATOR only) to all staff routes
 router.use('/staff', authenticate, enforcePasswordChange, requireRole(Role.IT_STAFF, Role.ADMINISTRATOR));
@@ -216,6 +207,7 @@ router.get('/staff/tickets/:id', async (req: AuthenticatedRequest, res: Response
         category: { select: { id: true, name: true } },
         relatedSystem: { select: { id: true, name: true } },
         requester: { select: { id: true, name: true, email: true, department: true } },
+        _count: { select: { actionsTaken: { where: pendingActionsWhere } } },
         owner: { select: { id: true, name: true, email: true, role: true } },
         attachments: {
           orderBy: { createdAt: 'desc' },
@@ -242,8 +234,9 @@ router.get('/staff/tickets/:id', async (req: AuthenticatedRequest, res: Response
       });
     }
 
+    const { _count, ...detail } = ticket;
     return res.status(200).json({
-      ...ticket,
+      ...detail, ...workflowDetail(ticket, _count.actionsTaken, true),
       activeAttachmentsCount: ticket.attachments.filter((a) => !a.isRemoved).length,
     });
   } catch (error) {
@@ -262,7 +255,7 @@ for (const operation of ['claim', 'assign', 'priority', 'status'] as const) {
   router.patch(`/staff/tickets/:id/${operation}`, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const id = pathId(req.params.id);
-      const field = { claim: [], assign: ['ownerId'], priority: ['itPriority'], status: ['status', 'reason'] }[operation];
+      const field = { claim: [], assign: ['ownerId'], priority: ['itPriority'], status: ['status', 'reason', 'resolutionSummary'] }[operation];
       const body = bodyFields(req.body, ['version', ...field]);
       const version = integer(body.version, 'version');
       const updated = await prisma.$transaction(async tx => {
@@ -271,7 +264,7 @@ for (const operation of ['claim', 'assign', 'priority', 'status'] as const) {
         if (operation !== 'status' && ['CLOSED', 'CANCELLED'].includes(ticket.status)) {
           throw new ApiError(422, 'TICKET_NOT_ACTIVE', 'Closed/cancelled Tickets are read-only.');
         }
-        let data: { ownerId?: number | null; itPriority?: Priority; status?: TicketStatus } = {};
+        let data: Prisma.TicketUncheckedUpdateInput = {};
         if (operation === 'claim') {
           if (ticket.ownerId !== null && ticket.ownerId !== req.user!.id) {
             throw new ApiError(409, 'ALREADY_ASSIGNED', 'This Ticket already has an owner. Use explicit reassignment.');
@@ -293,20 +286,19 @@ for (const operation of ['claim', 'assign', 'priority', 'status'] as const) {
         } else {
           if (typeof body.status !== 'string' || !Object.values(TicketStatus).includes(body.status as TicketStatus)) invalid('status', 'Choose a valid Ticket status.');
           const status = body.status as TicketStatus;
-          if (status !== ticket.status && !PERMITTED_STATUS_TRANSITIONS[ticket.status].includes(status)) {
-            throw new ApiError(422, 'INVALID_STATUS_TRANSITION', `Status transition from ${ticket.status} to ${status} is not permitted.`);
-          }
-          data = { status };
-          // The final resolution gate/history/cancellation cascade are delivered in feature 3.
+          data = await prepareTransition(tx, ticket, status, req.user!.id, body);
         }
-        const changed = Object.entries(data).some(([key, value]) => ticket[key as keyof typeof data] !== value);
+        if (operation !== 'status' && data.status && data.status !== ticket.status) {
+          Object.assign(data, await prepareTransition(tx, ticket, data.status as TicketStatus, req.user!.id));
+        }
+        const changed = Object.entries(data).some(([key, value]) => ticket[key as keyof typeof ticket] !== value);
         const include = { owner: { select: { id: true, name: true, email: true } } } as const;
         return changed
           ? tx.ticket.update({ where: { id }, data: { ...data, version: { increment: 1 } }, include })
           : tx.ticket.findUniqueOrThrow({ where: { id }, include });
       });
       return res.json({ id: updated.id, ticketNumber: updated.ticketNumber, ownerId: updated.ownerId,
-        owner: updated.owner, status: updated.status, itPriority: updated.itPriority, version: updated.version, updatedAt: updated.updatedAt });
+        owner: updated.owner, status: updated.status, itPriority: updated.itPriority, version: updated.version, updatedAt: updated.updatedAt, ...workflowFields(updated) });
     } catch (error) { return sendApiError(res, error); }
   });
 }
