@@ -103,6 +103,9 @@ model Ticket {
   @@index([ownerId])
   @@index([ticketNumber])
   @@index([status])
+  @@index([requesterId, status, resolvedAt])
+  @@index([ownerId, status])
+  @@index([updatedAt, id])
 }
 
 model TicketStatusEvent {
