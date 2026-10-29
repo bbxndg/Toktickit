@@ -151,7 +151,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, onNavigate }) => {
               </div>
               <button
                 type="button"
-                className="zg-user-pill-btn ms-2 text-danger fw-bold"
+                className="zg-user-pill-btn ms-2 fw-bold"
                 onClick={auth.logout}
                 data-testid="sign-out-btn"
                 title="Sign out of TokTickIT"
