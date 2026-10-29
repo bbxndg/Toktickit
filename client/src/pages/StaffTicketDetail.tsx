@@ -98,9 +98,10 @@ const TERMINAL_STATUSES = ['RESOLVED', 'CLOSED', 'CANCELLED'];
 interface StaffTicketDetailProps {
   ticketId: number;
   onBack: () => void;
+  actionTarget?: { id: number; page: number };
 }
 
-export const StaffTicketDetail: React.FC<StaffTicketDetailProps> = ({ ticketId, onBack }) => {
+export const StaffTicketDetail: React.FC<StaffTicketDetailProps> = ({ ticketId, onBack, actionTarget }) => {
   const { token, user } = useAuth();
 
   const [ticket, setTicket] = useState<TicketDetailData | null>(null);
@@ -125,7 +126,7 @@ export const StaffTicketDetail: React.FC<StaffTicketDetailProps> = ({ ticketId, 
   const [isConfirmingTerminal, setIsConfirmingTerminal] = useState(false);
 
   // Active Tab: attachments, comments, notes
-  const [activeTab, setActiveTab] = useState<'attachments' | 'comments' | 'notes' | 'actions' | 'history'>('attachments');
+  const [activeTab, setActiveTab] = useState<'attachments' | 'comments' | 'notes' | 'actions' | 'history'>(actionTarget ? 'actions' : 'attachments');
 
   // Collaboration state
   const [comments, setComments] = useState<CommentItem[]>([]);
@@ -808,7 +809,7 @@ export const StaffTicketDetail: React.FC<StaffTicketDetailProps> = ({ ticketId, 
             <div className="card-body p-3">
               {activeTab === 'history' && token && <StatusHistory ticketId={ticketId} token={token} version={ticket.version} />}
               {activeTab === 'actions' && token && user && <ActionsTaken ticketId={ticketId} token={token} currentUser={user}
-                ticketStatus={ticket.status} ticketVersion={ticket.version} onTicketChange={onActionTicketChange} />}
+                ticketStatus={ticket.status} ticketVersion={ticket.version} onTicketChange={onActionTicketChange} actionTarget={actionTarget} />}
               {/* Attachments Tab */}
               {activeTab === 'attachments' && (
                 <div data-testid="attachments-tab-pane">

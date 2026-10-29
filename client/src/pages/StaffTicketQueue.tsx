@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
@@ -36,10 +36,12 @@ interface QueueCounts {
 }
 
 interface StaffTicketQueueProps {
+  initialQuery?: Record<string, string | number>;
+  active?: boolean;
   onSelectTicket: (ticketId: number) => void;
 }
 
-export const StaffTicketQueue: React.FC<StaffTicketQueueProps> = ({ onSelectTicket }) => {
+export const StaffTicketQueue: React.FC<StaffTicketQueueProps> = ({ onSelectTicket, initialQuery = {}, active = true }) => {
   const { token, user } = useAuth();
 
   const [tickets, setTickets] = useState<StaffTicketItem[]>([]);
@@ -64,16 +66,18 @@ export const StaffTicketQueue: React.FC<StaffTicketQueueProps> = ({ onSelectTick
   const [searchInput, setSearchInput] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [categoryId, setCategoryId] = useState('');
-  const [status, setStatus] = useState('');
+  const [status, setStatus] = useState(String(initialQuery.status || ''));
+  const [statusGroup, setStatusGroup] = useState(String(initialQuery.statusGroup || ''));
   const [requestedPriority, setRequestedPriority] = useState('');
-  const [itPriority, setItPriority] = useState('');
-  const [ownerId, setOwnerId] = useState('');
+  const [itPriority, setItPriority] = useState(String(initialQuery.itPriority || ''));
+  const [ownerId, setOwnerId] = useState(String(initialQuery.ownerId || ''));
   const [sortBy, setSortBy] = useState('createdAt');
   const [sortOrder, setSortOrder] = useState('desc');
   const [page, setPage] = useState(1);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const requestSequence = useRef(0);
 
   // 300ms Debounce search input
   useEffect(() => {
@@ -112,14 +116,17 @@ export const StaffTicketQueue: React.FC<StaffTicketQueueProps> = ({ onSelectTick
 
   // Fetch queue tickets from backend
   const fetchQueueTickets = useCallback(async () => {
+    const sequence = ++requestSequence.current;
     setLoading(true);
     setError('');
+    let movingToAvailablePage = false;
 
     try {
       const params = new URLSearchParams();
       if (debouncedSearch.trim()) params.append('search', debouncedSearch.trim());
       if (categoryId) params.append('categoryId', categoryId);
       if (status) params.append('status', status);
+      if (statusGroup) params.append('statusGroup', statusGroup);
       if (requestedPriority) params.append('requestedPriority', requestedPriority);
       if (itPriority) params.append('itPriority', itPriority);
       if (ownerId) params.append('ownerId', ownerId);
@@ -137,31 +144,40 @@ export const StaffTicketQueue: React.FC<StaffTicketQueueProps> = ({ onSelectTick
       }
 
       const data = await res.json();
+      if (sequence !== requestSequence.current) return;
+      if (Number.isInteger(data.pagination?.totalPages) && data.pagination.totalPages >= 1 && page > data.pagination.totalPages) {
+        movingToAvailablePage = true;
+        setPage(data.pagination.totalPages);
+        return;
+      }
       setTickets(data.data || []);
       setPagination(data.pagination || { page: 1, pageSize: 10, totalItems: 0, totalPages: 1 });
       if (data.queueCounts) {
         setQueueCounts(data.queueCounts);
       }
     } catch (err: any) {
+      if (sequence !== requestSequence.current) return;
       setError(err.message || 'Unable to connect to service desk.');
     } finally {
-      setLoading(false);
+      if (sequence === requestSequence.current && !movingToAvailablePage) setLoading(false);
     }
-  }, [token, debouncedSearch, categoryId, status, requestedPriority, itPriority, ownerId, sortBy, sortOrder, page]);
+  }, [token, debouncedSearch, categoryId, status, statusGroup, requestedPriority, itPriority, ownerId, sortBy, sortOrder, page]);
 
   useEffect(() => {
-    fetchQueueTickets();
-  }, [fetchQueueTickets]);
+    const sequence = requestSequence;
+    if (active) void fetchQueueTickets();
+    return () => { sequence.current++; };
+  }, [fetchQueueTickets, active]);
 
   const hasActiveFilters = Boolean(
-    searchInput || categoryId || status || requestedPriority || itPriority || ownerId
+    searchInput || categoryId || status || statusGroup || requestedPriority || itPriority || ownerId
   );
 
   const clearAllFilters = () => {
     setSearchInput('');
     setDebouncedSearch('');
     setCategoryId('');
-    setStatus('');
+    setStatus(''); setStatusGroup('');
     setRequestedPriority('');
     setItPriority('');
     setOwnerId('');
@@ -239,7 +255,7 @@ export const StaffTicketQueue: React.FC<StaffTicketQueueProps> = ({ onSelectTick
         <div className="d-flex flex-wrap align-items-center gap-2" data-testid="queue-summary-chips">
           <button
             type="button"
-            className={`btn btn-sm ${!status && !ownerId ? 'btn-success' : 'btn-outline-secondary'}`}
+            className={`btn btn-sm ${!hasActiveFilters ? 'btn-success' : 'btn-outline-secondary'}`}
             onClick={clearAllFilters}
             title="Show all tickets"
           >
@@ -281,6 +297,7 @@ export const StaffTicketQueue: React.FC<StaffTicketQueueProps> = ({ onSelectTick
         </div>
       </div>
 
+      {statusGroup && <p className="alert alert-info">Active Tickets</p>}
       {/* Filter Toolbar */}
       <div className="card shadow-sm border-0 p-3 mb-3 bg-white" data-testid="staff-queue-toolbar">
         <div className="row g-2 align-items-center">
@@ -328,7 +345,7 @@ export const StaffTicketQueue: React.FC<StaffTicketQueueProps> = ({ onSelectTick
               className="form-select form-select-sm"
               value={status}
               onChange={(e) => {
-                setStatus(e.target.value);
+                setStatus(e.target.value); setStatusGroup('');
                 setPage(1);
               }}
               data-testid="staff-queue-status-filter"

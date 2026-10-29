@@ -47,11 +47,10 @@ describe('GET /api/tickets (My Tickets List API)', () => {
       .field('description', 'Grade upload gives 500 server error on final step.');
   });
 
-  it('should reject requests missing requesterId with HTTP 400', async () => {
+  it('rejects unauthenticated list access', async () => {
     const res = await request(app).get('/api/tickets');
-    expect(res.status).toBe(400);
-    expect(res.body.error.code).toBe('VALIDATION_ERROR');
-    expect(res.body.error.details.some((d: any) => d.field === 'requesterId')).toBe(true);
+    expect(res.status).toBe(401);
+    expect(res.body.error.code).toBe('UNAUTHORIZED');
   });
 
   it('API-05: should retrieve only tickets owned by the requesting user (Requester Isolation)', async () => {

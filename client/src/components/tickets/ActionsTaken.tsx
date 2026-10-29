@@ -15,7 +15,7 @@ interface Page { data: ActionRecord[]; ticket: ActionTicket; pagination: { page:
 interface Draft { description: string; result: string; assigneeId: number; status: Status;
   followUpRequired: boolean; followUpNote: string; attachmentNotes: string; cancelReason: string }
 interface Props { ticketId: number; token: string; currentUser: Person; ticketStatus: string; ticketVersion: number;
-  onTicketChange: (ticket: ActionTicket) => void }
+  onTicketChange: (ticket: ActionTicket) => void; actionTarget?: { id: number; page: number } }
 const active = ['NEW', 'OPEN', 'IN_PROGRESS', 'WAITING_FOR_REQUESTER', 'REOPENED'];
 const next: Record<Status, Status[]> = { PLANNED: ['IN_PROGRESS', 'COMPLETED', 'CANCELLED'], IN_PROGRESS: ['COMPLETED', 'CANCELLED'], COMPLETED: [], CANCELLED: [] };
 const label = (value: string) => value.toLowerCase().replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
@@ -51,9 +51,9 @@ export function ActionsTaken(props: Props) {
   return <ActionSession key={`${props.ticketId}:${props.token}:${props.currentUser.id}`} {...props} />;
 }
 
-function ActionSession({ ticketId, token, currentUser, ticketStatus, ticketVersion, onTicketChange }: Props) {
+function ActionSession({ ticketId, token, currentUser, ticketStatus, ticketVersion, onTicketChange, actionTarget }: Props) {
   const staff = currentUser.role === 'IT_STAFF' || currentUser.role === 'ADMINISTRATOR';
-  const [page, setPage] = useState(1), [result, setResult] = useState<Page | null>(null);
+  const [page, setPage] = useState(actionTarget?.page || 1), [result, setResult] = useState<Page | null>(null);
   const [loading, setLoading] = useState(true), [listError, setListError] = useState('');
   const [members, setMembers] = useState<Person[]>([]), [membersError, setMembersError] = useState(''), [membersLoading, setMembersLoading] = useState(false);
   const [draft, setDraft] = useState<Draft | null>(null), [editing, setEditing] = useState<ActionRecord | null>(null), [view, setView] = useState<ActionRecord | null>(null);
@@ -205,12 +205,14 @@ function ActionSession({ ticketId, token, currentUser, ticketStatus, ticketVersi
     {loading && <p role="status">Loading Actions Taken...</p>}
     {listError && <div className="alert alert-danger" role="alert">{listError} <button type="button" className="btn btn-zg-secondary" onClick={() => void load()}>Retry</button></div>}
     {!loading && !listError && result && <>
+      {actionTarget && page === actionTarget.page && !result.data.some(row => row.id === actionTarget.id) && <p role="status">The selected action is no longer on this page. Check the action list.</p>}
       {result.data.length === 0 ? <p>No actions recorded.</p> : <>
         <div className="d-none d-lg-block table-responsive"><table className="table align-middle"><caption className="visually-hidden">Recorded work, oldest first</caption>
           <thead><tr>{['Action Date/Time', 'Description', 'Assignee', 'Performed By', 'Status', 'Follow-up', 'Actions'].map(name => <th key={name} scope="col">{name}</th>)}</tr></thead>
-          <tbody>{result.data.map(row => <tr key={row.id}><td>{date(row.actionAt)}</td><td className="action-description">{row.description}</td><td>{row.assignee.name}</td>
+          <tbody>{result.data.map(row => <tr key={row.id} className={row.id === actionTarget?.id ? 'table-success' : undefined}><td>{date(row.actionAt)}{row.id === actionTarget?.id && ' (Selected)'}</td><td className="action-description">{row.description}</td><td>{row.assignee.name}</td>
             <td>{row.performedBy?.name || 'Not completed'}</td><td>{badge(row.status)}</td><td>{row.followUpRequired ? 'Required' : 'No'}</td><td>{buttons(row)}</td></tr>)}</tbody></table></div>
-        <div className="d-lg-none">{result.data.map(row => <article className="zg-card p-3 mb-3" key={row.id}>
+        <div className="d-lg-none">{result.data.map(row => <article className={`zg-card p-3 mb-3 ${row.id === actionTarget?.id ? 'border border-success' : ''}`} key={row.id}>
+          {row.id === actionTarget?.id && <strong>Selected action</strong>}
           <div className="d-flex justify-content-between gap-2 mb-2">{badge(row.status)}<small>{date(row.actionAt)}</small></div><p className="action-description">{row.description}</p>
           <p>Assignee: {row.assignee.name}<br />Performed By: {row.performedBy?.name || 'Not completed'}<br />Follow-up: {row.followUpRequired ? 'Required' : 'No'}</p>{buttons(row)}</article>)}</div>
       </>}
