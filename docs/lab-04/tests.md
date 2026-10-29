@@ -2,7 +2,7 @@
 
 **Product:** TokTickIT IT Service Desk\
 **Sprint:** Lab 4 — Actions Taken, Dashboards, and Final Regression\
-**Status:** Draft Test Plan — Product Tests Not Run
+**Status:** Test Plan — Feature 5 verification in progress
 
 ---
 
@@ -17,9 +17,9 @@ The plan follows Spec DD, Test DD and TDD for the Lab 4 scope. For each implemen
 5. **Browser E2E:** Real multi-role flows against the running client/server/database.
 6. **Migration/Regression/Performance Smoke:** Existing-data preservation and recovery, repeated seeding, prior-feature continuity and bounded-query measurements.
 
-Each test ID below names a scenario group; implement meaningful parameterized cases for the stated boundaries. Every listed new test file is a **proposed path**, not an existing executable. Replace proposed paths with actual paths if implementation changes them, keeping the mapping intact. Final status is Planned until a real run supplies its command, commit, outcome, and evidence. Failed or Blocked results must remain visible; required scenarios cannot be skipped to obtain a green summary.
+Each test ID below names a scenario group; implement meaningful parameterized cases for the stated boundaries. Paths in the matrix were proposed during planning and may differ from implemented files. Final status is Planned until a real run supplies its command, commit, outcome, and evidence. Failed or Blocked results must remain visible; required scenarios cannot be skipped to obtain a green summary.
 
-API integration tests use Express/Supertest and a disposable PostgreSQL database. UI component tests use the existing Vitest/Testing Library setup. Existing `client/tests/lab-02/e2e-journey.test.tsx` and `client/tests/lab-03/e2e-journey.test.tsx` mock network behavior; they are component journeys, not real browser E2E. Issue 5 will add a browser runner and the real browser paths below. The runner choice/configuration and exact command must be recorded before execution; Playwright is the proposed choice, not an installed dependency in Issue 1.
+API integration tests use Express/Supertest and a disposable PostgreSQL database. UI component tests use the existing Vitest/Testing Library setup. Existing `client/tests/lab-02/e2e-journey.test.tsx` and `client/tests/lab-03/e2e-journey.test.tsx` mock network behavior; they are component journeys, not real browser E2E. Issue 5 uses Playwright for the initial browser checks recorded in section 6.
 
 Do not run migration, reset, destructive fixture cleanup, or restoration against the student's working database. Assert the dedicated test database name before fixture setup. Use isolated fixture keys and remove only records created by the suite. Run database-mutating API suites serially, consistent with the existing server test configuration. Freeze/inject the clock for time-boundary assertions. Never publish JWTs, passwords, connection strings, private notes, or uploaded private binaries as test evidence.
 
@@ -144,7 +144,7 @@ npm --prefix client run build
 npm --prefix client run lint
 ```
 
-No root `package.json` command is assumed. There is no server lint script in the current package. A focused proposed API command after its file exists is `npm --prefix server test -- tests/lab-04/actions-taken.api.test.ts`. Browser E2E, disposable migration/recovery and performance commands are **pending Issue 5 configuration**; record exact executable commands after adding the runner and safety guards.
+No root `package.json` command is assumed. There is no server lint script in the current package. A focused API command is `npm --prefix server test -- tests/lab-04/actions-taken.api.test.ts`. Run the server test command first to prepare the isolated database, then use the browser command in section 6. Recovery and performance tests run through the isolated server test runner.
 
 Existing regression paths: `server/tests/lab-01/`, `server/tests/lab-02/`, `server/tests/lab-03/`, `client/tests/lab-01/`, `client/tests/lab-02/`, `client/tests/lab-03/`. Reconcile earlier tests for advisory requester indication, required versions, authenticated requester fixtures and role dashboard landing. Record old expectation, corrected requirement and new assertion; maintain the covered user capability. Keep any legacy selector simulation in isolated tests, never an unauthenticated production route.
 
@@ -163,14 +163,25 @@ Existing regression paths: `server/tests/lab-01/`, `server/tests/lab-02/`, `serv
 | Visual/accessibility/performance smoke | Pending | Pending | Pending | Planned | Pending |
 | Final main verification | Pending | Pending | Pending | Planned | Pending |
 
+Feature 5 evidence recorded on `feature/5_lab4-hardening-and-e2e` with uncommitted changes, 2026-10-29:
+
+- `npm --prefix server test -- --reporter=verbose`: 232 tests passed across 23 files in the dedicated `toktickit_lab4_feature2_test` database, including the dashboard index migration, recovery and performance checks.
+- `npm --prefix server test -- tests/lab-04/migration.integration.test.ts tests/lab-04/security-regression.api.test.ts`: 3 tests passed, including the extended migration check and protected-route regressions.
+- `npm --prefix client test`: 98 tests passed across 21 files. Both server and client builds passed; client lint completed with warnings.
+- `CHROME_EXECUTABLE_PATH=/usr/bin/google-chrome npm --prefix server run test:e2e`: 35 Playwright tests passed against isolated test users and database. These cover three role dashboard sign-in/drill-down/sign-out flows; Requester and staff dashboard, Ticket detail, actions, forms, history and lists at 1280, 820, 390 and 320 pixels; mobile User Management; mobile button size, Sign Out and badge text contrast; staff action validation/completion/cancellation, Requester indication, resolve/reopen/close and Requester read flow; dialog keyboard focus, trapping, Escape and return; lost-response retry and stale two-tab edit with preserved draft. Dashboard and action loading, failure/retry and empty states were checked on desktop and mobile; error responses and all-zero dashboard data were simulated, while action empty state came from the isolated API. Workflow, conflict and inactive-assignee validation screenshots were captured. Each run keeps its screenshots in a separate temporary subdirectory. Tests additionally exercise 200% CSS zoom on both dashboards and actions; this is a simulation and does not prove the browser's native zoom setting. Temporary screenshots are stored under `/tmp/toktickit-lab4-playwright-results/`; they are not repository artifacts. The runner requires ports 4000 and 5173 to be free and refuses to select alternate ports.
+- `npm --prefix server test -- tests/lab-04/recovery.integration.test.ts --reporter=verbose`: passed. The test migrates and populates a disposable schema, dumps it and restores it to a separate disposable database, compares User/Ticket/attachment/comment/note records and a fixture file checksum, and performs authenticated Ticket read and file download through a temporary server against the restored database. Both temporary database and schema are deleted after the test.
+- `npm --prefix server test -- tests/lab-04/performance-smoke.api.test.ts --reporter=verbose`: passed on Linux x86_64, 12 reported CPUs, with local PostgreSQL and 1,000 fixture Tickets plus 3,000 actions. Three warmups and 20 measured requests per role yielded requester p95 19.2 ms / maximum response 1,836 bytes and staff p95 55.3 ms / maximum response 3,928 bytes. Exact counts and five-row caps were checked. Prisma logged 8 requester and 16 staff dashboard-client queries including transaction and relation-loading commands; staff query count remained 16 for one and five displayed pending actions. Authentication queries use a separate client and are not included in these counts.
+- These checks do not cover all planned browser, accessibility, visual, recovery, or performance scenarios. Their matrix statuses remain Planned until corresponding evidence is recorded.
+- Earlier development runs failed because browser selectors did not match rendered labels, PostgreSQL client tools were mismatched, the seed test exceeded its original five-second timeout under load, mobile CSS specificity left controls too small, and the visual-state test initially failed to intercept repeated React requests. These issues were corrected; subsequent reruns passed. The first query-count expectations also omitted Prisma transaction setup and relation-loading queries; the limits now include them and the test separately checks one-versus-five action query growth. Native browser zoom could not be verified through the available browser control: its zoom shortcut did not change the displayed page. The CSS zoom simulation is recorded separately.
+
 At release, record final main's commit hash and rerun the required suites there. Link outputs/screenshots and update each scenario group's final status from real evidence; evidence from an earlier branch must not be represented as execution on main.
 
 ---
 
 ## 7. Known Limitations or Deferred Verification
 
-- Feature 1 contains only the four core documents. All product scenario groups remain Planned; no Lab 4 implementation or runtime test pass is claimed.
-- New test paths are proposed until their implementation issue creates them. Record real file paths before final submission.
-- Browser E2E configuration, migration/recovery/performance commands and screenshot artifacts do not yet exist for Lab 4. Add and verify them during implementation; component journeys do not substitute for browser evidence.
+- Feature 1 contained only the four core documents. Scenario groups remain Planned until all their listed checks have recorded evidence; partial results are listed in section 6.
+- Some test paths remain proposals. Reconcile them with actual files before final submission.
+- Browser E2E, recovery and performance checks exist as recorded in section 6, but native browser zoom and the complete visual-state and accessibility checklist remain outstanding; component journeys do not substitute for browser evidence.
 - Reviewer and AI-use records are prepared later from actual review/prompt evidence using the earlier-lab formats.
 - Exact metrics, field limits, action statuses and concurrency/retry implementation are project decisions for review under Lab 4, not values prescribed verbatim by the handout.
