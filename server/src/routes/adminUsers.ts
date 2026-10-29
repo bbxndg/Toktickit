@@ -1,6 +1,6 @@
 import { Router, Response } from 'express';
 import { PrismaClient, Role } from '@prisma/client';
-import { authenticate, requireRole, AuthenticatedRequest } from '../middleware/auth';
+import { authenticate, enforcePasswordChange, requireRole, AuthenticatedRequest } from '../middleware/auth';
 import { validatePasswordComplexity, hashPassword } from '../utils/auth';
 
 const router = Router();
@@ -10,6 +10,7 @@ const prisma = new PrismaClient();
 router.get(
   '/admin/users',
   authenticate,
+  enforcePasswordChange,
   requireRole(Role.ADMINISTRATOR),
   async (req: AuthenticatedRequest, res: Response) => {
     try {
@@ -62,6 +63,7 @@ router.get(
 router.post(
   '/admin/users',
   authenticate,
+  enforcePasswordChange,
   requireRole(Role.ADMINISTRATOR),
   async (req: AuthenticatedRequest, res: Response) => {
     try {
@@ -166,6 +168,7 @@ router.post(
 router.patch(
   '/admin/users/:id',
   authenticate,
+  enforcePasswordChange,
   requireRole(Role.ADMINISTRATOR),
   async (req: AuthenticatedRequest, res: Response) => {
     try {
@@ -300,6 +303,7 @@ router.patch(
 router.post(
   '/admin/users/:id/reset-password',
   authenticate,
+  enforcePasswordChange,
   requireRole(Role.ADMINISTRATOR),
   async (req: AuthenticatedRequest, res: Response) => {
     try {

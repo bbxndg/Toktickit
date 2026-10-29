@@ -1,9 +1,9 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { PrismaClient, Priority, TicketStatus } from '@prisma/client';
 import multer from 'multer';
+import fs from 'fs';
 import { uploadAttachments } from '../utils/fileUpload';
 import { generateTicketNumber } from '../utils/ticketNumber';
-import { verifyToken } from '../utils/auth';
 import { authenticate, enforcePasswordChange, requireRole, AuthenticatedRequest } from '../middleware/auth';
 import { dashboardFilters } from '../utils/dashboardFilters';
 import { ApiError, sendApiError } from '../utils/ticketWrites';
@@ -178,7 +178,8 @@ router.get('/tickets', authenticate, enforcePasswordChange, requireRole('REQUEST
 });
 
 // POST /api/tickets - Create a new support ticket
-router.post('/tickets', handleUpload, async (req: Request, res: Response) => {
+router.post('/tickets', authenticate, enforcePasswordChange, requireRole('REQUESTER'), handleUpload, async (req: AuthenticatedRequest, res: Response) => {
+  res.on('finish', () => { if (res.statusCode >= 400) for (const file of (req.files as Express.Multer.File[] || [])) fs.unlink(file.path, () => {}); });
   try {
     const {
       requesterId,
@@ -191,30 +192,8 @@ router.post('/tickets', handleUpload, async (req: Request, res: Response) => {
 
     const validationErrors: { field: string; message: string }[] = [];
 
-    // 1. Validate requesterId (derive from session token if present per BR-05)
-    let parsedRequesterId: number | undefined;
-    const authHeader = req.headers.authorization;
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      const payload = verifyToken(authHeader.split(' ')[1]);
-      if (payload && payload.role === 'REQUESTER') {
-        parsedRequesterId = payload.id;
-      }
-    }
-
-    if (!parsedRequesterId) {
-      parsedRequesterId = parseInt(requesterId, 10);
-    }
-
-    if (!parsedRequesterId || isNaN(parsedRequesterId)) {
-      validationErrors.push({ field: 'requesterId', message: 'Requester ID is required.' });
-    } else {
-      const requester = await prisma.user.findUnique({
-        where: { id: parsedRequesterId },
-      });
-      if (!requester || !requester.isActive) {
-        validationErrors.push({ field: 'requesterId', message: 'Selected requester is invalid or inactive.' });
-      }
-    }
+    // Requester identity comes only from the current authenticated account.
+    const parsedRequesterId = req.user!.id;
 
     // 2. Validate categoryId
     const parsedCategoryId = parseInt(categoryId, 10);

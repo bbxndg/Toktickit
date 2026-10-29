@@ -1,3 +1,4 @@
+import { downloadAttachment } from '../utils/downloadAttachment';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { ActionsTaken, type ActionTicket } from '../components/tickets/ActionsTaken';
 import { WorkflowConfirmation } from '../components/tickets/WorkflowConfirmation';
@@ -829,14 +830,10 @@ export const StaffTicketDetail: React.FC<StaffTicketDetailProps> = ({ ticketId, 
                             <span className="fw-semibold small">{att.originalName}</span>
                             <small className="text-muted ms-2">({formatFileSize(att.sizeBytes)})</small>
                           </div>
-                          <a
-                            href={`${API_BASE}/api/attachments/${att.id}/download?token=${token || ''}`}
-                            className="btn btn-outline-secondary btn-sm py-0 px-2"
-                            download
-                            data-testid={`download-btn-${att.id}`}
-                          >
+                          <button type="button" className="btn btn-outline-secondary btn-sm py-0 px-2" data-testid={`download-btn-${att.id}`}
+                            onClick={() => void downloadAttachment(att.id, att.originalName, token).catch(err => showToast('danger', err.message))}>
                             Download
-                          </a>
+                          </button>
                         </div>
                       ))}
                     </div>

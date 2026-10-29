@@ -1,3 +1,4 @@
+import { downloadAttachment } from '../utils/downloadAttachment';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { ActionsTaken, ActionDialog, type ActionTicket } from '../components/tickets/ActionsTaken';
 import { StatusHistory } from '../components/tickets/StatusHistory';
@@ -80,6 +81,7 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({ ticketId, onBack }) 
   // Add Attachment State
   const [addingAttachment, setAddingAttachment] = useState(false);
   const [addAttachError, setAddAttachError] = useState('');
+  const [downloadError, setDownloadError] = useState('');
 
   const [collaborationTab, setCollaborationTab] = useState<'comments' | 'actions' | 'history'>('comments');
   const onActionTicketChange = useCallback((parent: ActionTicket) => {
@@ -464,6 +466,7 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({ ticketId, onBack }) 
         {ticket.requesterResolvedAt && <span> {new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'long' }).format(new Date(ticket.requesterResolvedAt))}.</span>}
         {['IN_PROGRESS', 'WAITING_FOR_REQUESTER'].includes(ticket.status) && ' IT will review the work before updating the Ticket status.'}</p>}
       {ticket.resolutionSummary && <div className="alert alert-success"><strong>Resolution Summary:</strong> <span style={{ whiteSpace: 'pre-wrap' }}>{ticket.resolutionSummary}</span></div>}
+      {downloadError && <p role="alert" className="alert alert-danger">{downloadError}</p>}
       {/* Success Toast / Notification */}
       {resolveSuccessMsg && (
         <div className="alert alert-success py-2 small mb-3 shadow-sm d-flex justify-content-between align-items-center" role="alert">
@@ -617,14 +620,10 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({ ticketId, onBack }) 
                       </div>
                     </div>
                     <div className="d-flex gap-2 flex-shrink-0 align-self-end align-self-sm-center">
-                      <a
-                        href={`${API_BASE}/api/attachments/${att.id}/download?token=${token || ''}&requesterId=${effectiveRequesterId || ''}`}
-                        className="btn btn-sm btn-zg-secondary"
-                        download={att.originalName}
-                        data-testid={`download-btn-${att.id}`}
-                      >
+                      <button type="button" className="btn btn-sm btn-zg-secondary" data-testid={`download-btn-${att.id}`}
+                        onClick={() => { setDownloadError(''); void downloadAttachment(att.id, att.originalName, token).catch(err => setDownloadError(err.message)); }}>
                         ⬇️ Download
-                      </a>
+                      </button>
                       <button
                         type="button"
                         className="btn btn-sm btn-outline-danger"

@@ -1,7 +1,6 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import path from 'path';
 import healthRouter from './routes/health';
 import categoriesRouter from './routes/categories';
 import requestersRouter from './routes/requesters';
@@ -22,8 +21,6 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Serve static uploads if needed
-app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
 app.use('/api', healthRouter);
 app.use('/api', categoriesRouter);
