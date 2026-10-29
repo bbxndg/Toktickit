@@ -48,15 +48,6 @@ function AppContent() {
   useEffect(() => {
     if (user) {
       setCurrentView(getDefaultView(user.role)); setListQuery({}); setListKey(x => x + 1); setSelectedTicketId(null); setActionTarget(undefined);
-      if (user.role === 'REQUESTER') {
-        setRequester({
-          id: user.id,
-          name: user.name,
-          email: user.email,
-          department: user.department || '',
-          isActive: user.isActive,
-        });
-      }
     } else {
       if (!isTestEnv) {
         clearRequester();
@@ -64,7 +55,14 @@ function AppContent() {
       setCurrentView('my-tickets');
       setSelectedTicketId(null);
     }
-  }, [user]);
+  }, [user?.id, user?.role]);
+
+  useEffect(() => {
+    if (user?.role === 'REQUESTER') {
+      setRequester({ id: user.id, name: user.name, email: user.email,
+        department: user.department || '', isActive: user.isActive });
+    }
+  }, [user?.id, user?.role, user?.name, user?.email, user?.department, user?.isActive]);
 
   // If requester changes while viewing ticket detail, return to my-tickets (BR-13)
   useEffect(() => {
@@ -72,7 +70,7 @@ function AppContent() {
       setCurrentView('my-tickets');
       setSelectedTicketId(null);
     }
-  }, [currentRequester]);
+  }, [currentRequester?.id]);
 
   return (
     <div className="min-vh-100 d-flex flex-column" style={{ backgroundColor: 'var(--zg-bg)' }}>

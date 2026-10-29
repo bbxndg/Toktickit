@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, type ReactNode } from 'react';
 
 export type UserRole = 'REQUESTER' | 'IT_STAFF' | 'ADMINISTRATOR';
 
@@ -51,12 +51,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isSessionChecking, setIsSessionChecking] = useState<boolean>(() => Boolean(token));
   const [error, setError] = useState<string | null>(null);
+  const sessionRevision = useRef(0);
 
   // Sync /me on load if token exists
   useEffect(() => {
     if (token) {
       const controller = new AbortController();
       let active = true;
+      const revision = sessionRevision.current;
       fetch(`${API_BASE}/api/auth/me`, {
         headers: { Authorization: `Bearer ${token}` },
         signal: controller.signal,
@@ -68,7 +70,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           throw new Error('Session expired');
         })
         .then((userData: User) => {
-          if (!active) return;
+          if (!active || revision !== sessionRevision.current) return;
           setUser(userData);
           localStorage.setItem(USER_KEY, JSON.stringify(userData));
         })
@@ -160,6 +162,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
 
       // Update user isPasswordChangeRequired flag locally
+      sessionRevision.current++;
       if (user) {
         const updatedUser = { ...user, isPasswordChangeRequired: false };
         setUser(updatedUser);
