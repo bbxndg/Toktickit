@@ -28,6 +28,14 @@ export function bodyFields(value: unknown, fields: string[]): Record<string, unk
   return value as Record<string, unknown>;
 }
 
+export function paginationQuery(query: Record<string, unknown>) {
+  for (const key of Object.keys(query)) if (!['page', 'pageSize'].includes(key)) invalid(key, 'Unknown pagination parameter.');
+  const page = query.page === undefined ? 1 : pathId(query.page, 'page');
+  const pageSize = query.pageSize === undefined ? 20 : pathId(query.pageSize, 'pageSize');
+  if (pageSize > 50) invalid('pageSize', 'Use a page size from 1 to 50.');
+  return { page, pageSize, skip: (page - 1) * pageSize };
+}
+
 // All work-item and workflow writes acquire this parent lock before touching children.
 export async function lockTicket(tx: Prisma.TransactionClient, id: number): Promise<Ticket> {
   const rows = await tx.$queryRaw<Ticket[]>`SELECT * FROM "Ticket" WHERE "id" = ${id} FOR UPDATE`;
