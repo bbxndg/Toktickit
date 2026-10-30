@@ -1,6 +1,6 @@
 # TokTickIT — IT Service Desk Portal
 
-A production-ready full-stack IT Service Desk ticketing application built with **React 19**, **TypeScript**, **Vite**, **Bootstrap 5**, **Node.js (Express v5)**, **Prisma ORM**, and **PostgreSQL**.
+A full-stack IT Service Desk ticketing application built with **React 19**, **TypeScript**, **Vite**, **Bootstrap 5**, **Node.js (Express v5)**, **Prisma ORM**, and **PostgreSQL**.
 
 ---
 
@@ -65,6 +65,33 @@ This release advances TokTickIT from a single-role prototype with simulated iden
 
 ---
 
+## Lab 4 — Actions Taken, Final Workflow & Role Dashboards
+
+Lab 4 extends the earlier ticketing flows with recorded work, resolution rules, role-specific dashboards, and regression hardening. Its contracts are in [`docs/lab-04`](docs/lab-04/).
+
+1. **Actions Taken**: Staff and Administrators can create, assign, edit, complete, or cancel work from Ticket Detail. Requesters can read actions on their own Tickets. Assignment is independent of Ticket ownership; completion automatically records the authenticated performer. Completed/cancelled actions are read-only, and historical inactive assignees retain their attribution with an explicit warning.
+2. **Final Ticket Workflow**: Resolution requires a summary and no pending (`PLANNED`/`IN_PROGRESS`) actions. Cancelling a Ticket atomically cancels its pending actions. Requester resolution indication is advisory; it does not change Ticket status. Permitted transitions, resolution/closure timestamps, and paginated status history are enforced by the server.
+3. **Role Dashboards**: Authenticated users land on their role's dashboard. Requesters see only their own Ticket metrics and recent Tickets; Staff and Administrators see operational counts, status/priority buckets, recent Tickets and their pending actions. Dashboard links open the matching filtered list or Ticket/action.
+4. **Concurrency & Failure Recovery**: Version checks reject stale Ticket/action updates with HTTP 409. Parent-first locking protects workflow changes, and action creation retries reuse an idempotency key. Forms retain drafts after recoverable failures and require explicit review after conflicts. Comments and Internal Notes distinguish load failures from empty data and provide Retry.
+5. **Security, Data Preservation & Verification**: Earlier authentication, role/ownership isolation, private notes and attachment rules remain enforced. Account safety checks validate JSON boolean flags and serialize administrator changes. Concurrent attachment uploads respect the five-active-file limit. Additive migrations and repeatable seed fixtures preserve existing work; automated recovery checks restore records and file bytes into a disposable database.
+
+The standard development ports remain **API: 4000** and **client: 5173**. If Vite reports that 5173 is occupied, stop the existing frontend instance you own before restarting on that port.
+
+### Lab 4 Database Upgrade
+
+Back up both PostgreSQL and `server/uploads/attachments/` together before upgrading an existing installation. Keep IDs, ownership, authorship, attachment metadata, and file checksums for comparison after migration or restoration. A database backup alone does not contain uploaded binaries.
+
+```bash
+# Run from the repository root after configuring server/.env
+cd server
+npx prisma migrate deploy
+npx prisma db seed
+```
+
+Use additive migrations; do not reset an existing database. Lab 4 backfills versions and indication defaults without inventing historical Actions Taken, resolution dates, or status events. Seed fixtures preserve existing records and changed credentials.
+
+---
+
 ## Project Structure
 
 ```
@@ -73,11 +100,13 @@ Toktickit/
 │   ├── src/
 │   │   ├── components/
 │   │   │   ├── auth/ChangePasswordModal.tsx
-│   │   │   └── layout/Navbar.tsx
+│   │   │   ├── layout/Navbar.tsx
+│   │   │   └── tickets/                 # Actions Taken, workflow dialogs & status history
 │   │   ├── context/
 │   │   │   ├── AuthContext.tsx           # Authentication session & JWT state
 │   │   │   └── RequesterContext.tsx      # Legacy Requester session adapter
 │   │   ├── pages/
+│   │   │   ├── Dashboard.tsx            # Requester and Staff/Admin dashboards
 │   │   │   ├── Login.tsx                 # Login with busy indicator
 │   │   │   ├── CreateTicket.tsx          # Ticket creation with multi-file attachments
 │   │   │   ├── MyTickets.tsx             # Requester ticket dashboard
@@ -92,17 +121,22 @@ Toktickit/
 │   ├── tests/
 │   │   ├── lab-01/                       # Lab 1 baseline tests
 │   │   ├── lab-02/                       # Lab 2 Requester & attachment tests
-│   │   └── lab-03/                       # Lab 3 Auth, Queue, Staff Detail, Admin & E2E
+│   │   ├── lab-03/                       # Lab 3 component journeys and regression
+│   │   └── lab-04/                       # Actions, workflow, dashboard and failure-state tests
+│   ├── e2e/lab-04/                       # Playwright browser workflows and visual checks
 │   ├── package.json
 │   └── vite.config.ts
 ├── server/                     # Node.js + Express v5 + TypeScript backend
 │   ├── prisma/
-│   │   ├── schema.prisma                 # Schema: User, Ticket, Attachment, PublicComment, InternalNote
+│   │   ├── schema.prisma                 # Includes ActionTaken, TicketStatusEvent and earlier models
 │   │   └── seed.ts                       # Idempotent seed script (Requesters, Staff, Admins, Tickets)
 │   ├── src/
 │   │   ├── middleware/
 │   │   │   └── auth.ts                   # authenticate & requireRole RBAC guards
 │   │   ├── routes/
+│   │   │   ├── actionsTaken.ts           # Shared actions and staff writes
+│   │   │   ├── dashboard.ts              # Role-scoped summary metrics
+│   │   │   ├── statusHistory.ts          # Paginated Ticket status history
 │   │   │   ├── auth.ts                   # /api/auth (login, me, logout, change-password)
 │   │   │   ├── staff.ts                  # /api/staff (queue, claim, assign, priority, status)
 │   │   │   ├── adminUsers.ts             # /api/admin/users (CRUD, safety protections)
@@ -116,12 +150,15 @@ Toktickit/
 │   ├── tests/
 │   │   ├── lab-01/                       # Lab 1 API tests
 │   │   ├── lab-02/                       # Lab 2 Integration tests
-│   │   └── lab-03/                       # Lab 3 Auth, RBAC, Queue, Triage, Admin API tests
+│   │   ├── lab-03/                       # Lab 3 API regression
+│   │   └── lab-04/                       # Actions, workflow, security, migration, recovery & performance
+│   ├── scripts/                         # Isolated API/browser runners and interruption checks
 │   ├── package.json
 │   └── tsconfig.json
 ├── docs/                       # Specifications, test plans, and peer reviews
 │   ├── lab-01/
 │   ├── lab-02/
+│   ├── lab-04/                          # Lab 4 specifications and test plan
 │   └── lab-03/
 │       ├── specification.md              # Functional requirements & business rules (FR-01..16, BR-01..19)
 │       ├── api-spec.md                   # REST API contract schemas & error envelopes
@@ -137,7 +174,7 @@ Toktickit/
 
 ## Prerequisites
 
-- **Node.js**: v20+
+- **Node.js**: v22.12+ (or v20.19+)
 - **npm**: v9+
 - **PostgreSQL**: Running instance on `localhost:5432`
 
@@ -210,44 +247,72 @@ Open your browser at **[http://localhost:5173](http://localhost:5173)**.
 
 ## Automated Testing
 
-Both suites run via **Vitest** with deterministic sequential database isolation:
+### Full Regression (Labs 1–4)
 
-### Run Backend API Tests (Lab 3):
+Run these from the repository root:
+
 ```bash
-cd server
-npm test -- --reporter=verbose tests/lab-03
+npm --prefix server test
+npm --prefix client test
+npm --prefix server run build
+npm --prefix client run build
+npm --prefix client run lint
 ```
-*6 test files | 47 tests passed ✅*
 
-### Run Frontend Component Tests (Lab 3):
+The server runner reads connection credentials from `server/.env`, switches to the dedicated `toktickit_lab4_feature2_test` database, applies migrations, seeds fixtures, and runs tests serially. It does not run tests against the application's working database. The configured PostgreSQL role needs permission to create databases and disposable schemas for migration/recovery verification. Recovery tests also require compatible PostgreSQL `pg_dump` and `pg_restore` binaries.
+
+To run only the Lab 4 suites:
+
 ```bash
+npm --prefix server test -- tests/lab-04
+npm --prefix client test -- tests/lab-04
+```
+
+### Playwright Browser Tests (Lab 4)
+
+First run the server tests above to initialize the test database. Ensure ports **4000** and **5173** are free; the isolated runner starts its own API and frontend on these ports and stops them afterward.
+
+```bash
+# Install Playwright's Chromium once
 cd client
-npm test -- --reporter=verbose tests/lab-03
-```
-*7 test files | 26 tests passed ✅*
+npx playwright install chromium
+cd ..
 
-### Run Multi-Role End-to-End User Journeys (E2E):
+npm --prefix server run test:e2e
+
+# Verify cleanup when the runner receives SIGINT or SIGTERM
+npm --prefix server run test:e2e:interrupt
+```
+
+Alternatively, use an installed Chrome executable:
+
 ```bash
-cd client
-npx vitest run --reporter=verbose tests/lab-03/e2e-journey.test.tsx
+CHROME_EXECUTABLE_PATH=/usr/bin/google-chrome npm --prefix server run test:e2e
 ```
-*3 journeys passed (E2E-01: Auth & Password Change, E2E-02: Staff Queue & Note, E2E-03: Admin Safety) ✅*
 
-### Full Regression Suite:
+To test the compiled application instead of development servers, build both packages first and enable production mode:
+
 ```bash
-# Run all server tests (Lab 1 + Lab 2 + Lab 3)
-cd server && npm test
-
-# Run all client tests (Lab 1 + Lab 2 + Lab 3)
-cd ../client && npm test && npm run build
+npm --prefix server run build
+npm --prefix client run build
+E2E_PRODUCTION=1 CHROME_EXECUTABLE_PATH=/usr/bin/brave-browser npm --prefix server run test:e2e
 ```
 
-### Test Results Summary:
-| Suite | Test Files | Total Tests | Passed | Pass Rate |
-| :--- | :---: | :---: | :---: | :---: |
-| **Server Integration & API Tests** | 14 | 80 | 80 | **100%** |
-| **Client Component & E2E Journeys** | 13 | 49 | 49 | **100%** |
-| **Total Test Suite Health** | **27** | **129** | **129** | **100%** |
+This starts the compiled API and Vite preview on the same ports, 4000 and 5173. Set `CHROME_EXECUTABLE_PATH` to an installed compatible Chromium browser on your machine.
+
+Browser tests create temporary accounts/Tickets only in the isolated database and clean them up, including records and uploaded files created during a journey. The interruption check also verifies this cleanup after SIGINT/SIGTERM. Screenshots are written under the operating system's temporary directory at `toktickit-lab4-playwright-results/<run-id>/`, outside the repository. They cover role dashboards, action/workflow journeys, stale updates, lost responses, responsive layouts, native 200% browser zoom in disposable profiles, and recoverable loading/failure/empty states. The expanded suite checks Unicode filename and download integrity, public/private collaboration, Administrator and first-password flows, long action fields, cancellation cascades, keyboard navigation, dialog focus, accessible control names and uncaught JavaScript errors. Earlier Lab 3 `e2e-journey.test.tsx` tests are component-level journeys; the Lab 4 Playwright suite drives a real browser.
+
+### Latest Verification
+
+Verified on 31 October 2026: 500 server tests across 26 files, 111 client tests across 21 files, and the 77 browser scenarios in both Chrome development mode and Brave against compiled builds. The two browser runs represent 154 executions of 77 scenarios. Lint completed with existing warnings; both builds and SIGINT/SIGTERM fixture cleanup checks passed. Historical Lab 2/3 counts in their release sections describe those earlier milestones.
+
+| Suite | Passed |
+| :--- | ---: |
+| Server API/integration regression | 500 / 500 |
+| Client component regression | 111 / 111 |
+| Playwright — Chrome, development | 77 / 77 |
+| Playwright — Brave, compiled builds | 77 / 77 |
+
 
 ---
 
