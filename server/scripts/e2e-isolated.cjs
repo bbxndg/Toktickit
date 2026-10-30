@@ -1,5 +1,5 @@
 const path = require('node:path');
-const { spawn, spawnSync } = require('node:child_process');
+const { spawn } = require('node:child_process');
 const net = require('node:net');
 const { randomUUID } = require('node:crypto');
 const { PrismaClient } = require('@prisma/client');
@@ -11,8 +11,30 @@ require('dotenv').config({ path: path.join(serverDir, '.env'), quiet: true });
 const database = 'toktickit_lab4_feature2_test';
 const children = [];
 const password = `E2e-${randomUUID()}aA1!`;
-const suffix = randomUUID();
+const requestedTestId = process.env.NODE_ENV === 'test' ? process.env.E2E_TEST_RUN_ID : undefined;
+if (requestedTestId && !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestedTestId)) throw new Error('Invalid test run ID');
+const suffix = requestedTestId || randomUUID();
 const users = ['REQUESTER', 'IT_STAFF', 'ADMINISTRATOR'].map(role => ({ role, email: `e2e-${role.toLowerCase()}-${suffix}@test.local` }));
+
+let interrupted;
+function checkInterrupted() { if (interrupted) throw new Error(`Interrupted by ${interrupted}`); }
+function stopChild(child, signal = 'SIGTERM') {
+  if (!child.pid || child.exitCode !== null || child.signalCode !== null) return;
+  try { if (process.platform !== 'win32') process.kill(-child.pid, signal); else child.kill(signal); }
+  catch (error) { if (error.code !== 'ESRCH') throw error; }
+}
+function start(command, args, options) {
+  checkInterrupted();
+  const child = spawn(command, args, { ...options, detached: process.platform !== 'win32' });
+  child.finished = new Promise((resolve, reject) => { child.once('error', reject); child.once('close', (code, signal) => resolve({ code, signal })); });
+  children.push(child);
+  return child;
+}
+for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => {
+  if (interrupted) return;
+  interrupted = signal; process.exitCode = signal === 'SIGINT' ? 130 : 143;
+  for (const child of children) stopChild(child);
+});
 
 function available(port) {
   return new Promise((resolve, reject) => {
@@ -23,14 +45,15 @@ function available(port) {
 }
 async function ready(url, child) {
   for (let i = 0; i < 100; i++) {
-    if (child.exitCode !== null) throw new Error(`Test service exited before starting: ${url}`);
+    checkInterrupted();
+    if (child.exitCode !== null || child.signalCode !== null) throw new Error(`Test service exited before starting: ${url}`);
     try { await fetch(url); return; } catch { await new Promise(resolve => setTimeout(resolve, 200)); }
   }
   throw new Error(`Test service did not start: ${url}`);
 }
 async function main() {
   if (!process.env.DATABASE_URL) throw new Error('Configure server/.env DATABASE_URL first.');
-  await available(4000); await available(5173);
+  await available(4000); checkInterrupted(); await available(5173); checkInterrupted();
   const url = new URL(process.env.DATABASE_URL);
   url.pathname = '/' + database;
   if (url.pathname !== '/' + database) throw new Error('Dedicated test database required.');
@@ -41,8 +64,9 @@ async function main() {
   try {
     for (const user of users) {
       await db.user.create({ data: { ...user, name: `E2E ${user.role}`, passwordHash: bcrypt.hashSync(password, 10), isActive: true, isPasswordChangeRequired: false } });
-      env[`E2E_${user.role}_EMAIL`] = user.email;
+      env[`E2E_${user.role}_EMAIL`] = user.email; checkInterrupted();
     }
+    checkInterrupted();
     const requester = await db.user.findUniqueOrThrow({ where: { email: users[0].email } });
     const category = await db.category.findFirstOrThrow();
     const system = await db.relatedSystem.findFirstOrThrow();
@@ -64,14 +88,21 @@ async function main() {
     ticketIds.push(inactiveTicket.id); env.E2E_INACTIVE_TICKET_NUMBER = inactiveTicket.ticketNumber;
     await db.actionTaken.create({ data: { ticketId: inactiveTicket.id, assigneeId: inactive.id, createdById: staff.id,
       updatedById: staff.id, description: 'Historical inactive assignee action', clientRequestId: randomUUID(), requestFingerprint: suffix } });
-    const api = spawn(process.execPath, ['--import', 'tsx', 'src/index.ts'], { cwd: serverDir, env, stdio: 'inherit' }); children.push(api);
+    checkInterrupted();
+    const api = start(process.execPath, ['--import', 'tsx', 'src/index.ts'], { cwd: serverDir, env, stdio: 'inherit' });
     await ready('http://127.0.0.1:4000/api/health', api);
-    const ui = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', '5173', '--strictPort'], { cwd: clientDir, env, stdio: 'inherit' }); children.push(ui);
+    const ui = start(process.execPath, ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', '5173', '--strictPort'], { cwd: clientDir, env, stdio: 'inherit' });
     await ready('http://127.0.0.1:5173/', ui);
-    const result = spawnSync(process.execPath, ['node_modules/@playwright/test/cli.js', 'test', ...process.argv.slice(2)], { cwd: clientDir, env, stdio: 'inherit' });
-    if (result.status !== 0) process.exitCode = result.status || 1;
+    const playwright = start(process.execPath, ['node_modules/@playwright/test/cli.js', 'test', ...process.argv.slice(2)], { cwd: clientDir, env, stdio: 'inherit' });
+    const result = await playwright.finished;
+    checkInterrupted();
+    if (result.code !== 0) process.exitCode = result.code || 1;
   } finally {
-    for (const child of children.reverse()) child.kill('SIGTERM');
+    for (const child of [...children].reverse()) stopChild(child);
+    // Bound cleanup if a child does not respond to graceful termination.
+    const timeout = setTimeout(() => { for (const child of children) stopChild(child, 'SIGKILL'); }, 5000);
+    try { await Promise.allSettled(children.map(child => child.finished)); }
+    finally { clearTimeout(timeout); }
     if (ticketIds.length) {
       await db.actionTaken.deleteMany({ where: { ticketId: { in: ticketIds } } });
       await db.ticketStatusEvent.deleteMany({ where: { ticketId: { in: ticketIds } } });
@@ -82,4 +113,4 @@ async function main() {
     await db.$disconnect();
   }
 }
-main().catch(error => { console.error('Isolated E2E failed:', error.message); process.exitCode = 1; });
+main().catch(error => { console.error('Isolated E2E failed:', error.message); if (!interrupted) process.exitCode = 1; });
