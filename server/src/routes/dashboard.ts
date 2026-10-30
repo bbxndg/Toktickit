@@ -5,7 +5,10 @@ import { sendApiError } from '../utils/ticketWrites';
 import { ACTIVE_TICKET_STATUSES } from '../utils/dashboardFilters';
 
 const router = Router();
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({ log: process.env.NODE_ENV === 'test' ? [{ emit: 'event', level: 'query' }] : [] });
+let queryCount = 0;
+if (process.env.NODE_ENV === 'test') prisma.$on('query', () => { queryCount++; });
+export const dashboardQueryCount = () => queryCount;
 const selectTicket = { id: true, ticketNumber: true, summary: true, status: true, requestedPriority: true, itPriority: true, updatedAt: true } as const;
 const owner = { select: { id: true, name: true, role: true } } as const;
 const active = { in: ACTIVE_TICKET_STATUSES };
@@ -54,11 +57,13 @@ router.get('/dashboard/staff', requireRole(Role.IT_STAFF, Role.ADMINISTRATOR), a
       statuses.forEach(s => { byStatus[s.status] = s._count._all; });
       const byItPriority = Object.fromEntries(Object.values(Priority).map(p => [p, 0]));
       priorities.forEach(p => { byItPriority[p.itPriority ?? p.requestedPriority] += p._count._all; });
-      const actionPages = await Promise.all(actions.map(row => tx.actionTaken.count({ where: { ticketId: row.ticketId, OR: [
-        { actionAt: { lt: row.actionAt } }, { actionAt: row.actionAt, id: { lt: row.id } },
-      ] } })));
+      const counts = actions.length ? await tx.$queryRaw<{ id: number; preceding: bigint }[]>(Prisma.sql`
+        SELECT a.id, (SELECT count(*) FROM "ActionTaken" b
+          WHERE b."ticketId" = a."ticketId" AND (b."actionAt", b.id) < (a."actionAt", a.id)) AS preceding
+        FROM "ActionTaken" a WHERE a.id IN (${Prisma.join(actions.map(row => row.id))})`) : [];
+      const actionPages = new Map(counts.map(row => [row.id, Math.floor(Number(row.preceding) / 20) + 1]));
       return { generatedAt, metrics: { activeTickets, unassignedTickets, myAssignedTickets, waitingForRequester }, byStatus, byItPriority, recentTickets,
-        myPendingActions: { totalItems, data: actions.map(({ ticket, ...row }, index) => ({ ...row, ticketNumber: ticket.ticketNumber, page: Math.floor(actionPages[index] / 20) + 1 })) },
+        myPendingActions: { totalItems, data: actions.map(({ ticket, ...row }) => ({ ...row, ticketNumber: ticket.ticketNumber, page: actionPages.get(row.id) ?? 1 })) },
         drillDown: {
           activeTickets: { view: 'ticket-queue', query: { statusGroup: 'active', page: 1 } },
           unassignedTickets: { view: 'ticket-queue', query: { statusGroup: 'active', ownerId: 'unassigned', page: 1 } },

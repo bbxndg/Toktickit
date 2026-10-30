@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useRequester } from '../context/RequesterContext';
+import { useAuth } from '../context/AuthContext';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
 
@@ -24,6 +25,7 @@ interface ValidationErrors {
 
 export const CreateTicket: React.FC<CreateTicketProps> = ({ onCancel, onSuccess }) => {
   const { currentRequester, openSelector } = useRequester();
+  const { token } = useAuth();
 
   // Reference data state
   const [categories, setCategories] = useState<OptionItem[]>([]);
@@ -197,6 +199,7 @@ export const CreateTicket: React.FC<CreateTicketProps> = ({ onCancel, onSuccess 
 
       const res = await fetch(`${API_BASE}/api/tickets`, {
         method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: formData,
       });
 

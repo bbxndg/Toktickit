@@ -95,23 +95,12 @@ export function requireRole(...allowedRoles: (Role | Role[])[]) {
 
 export function enforcePasswordChange(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   if (req.user && req.user.isPasswordChangeRequired) {
-    // Exempt password change, logout, and me endpoints
-    const exemptedPaths = [
-      '/api/auth/change-password',
-      '/api/auth/logout',
-      '/api/auth/me',
-      '/auth/change-password',
-      '/auth/logout',
-      '/auth/me',
-    ];
-    if (!exemptedPaths.some(p => req.originalUrl?.includes(p) || req.path?.includes(p))) {
-      return res.status(403).json({
+    return res.status(403).json({
         error: {
           code: 'PASSWORD_CHANGE_REQUIRED',
           message: 'Password change is required before accessing application features.',
         },
-      });
-    }
+    });
   }
   next();
 }

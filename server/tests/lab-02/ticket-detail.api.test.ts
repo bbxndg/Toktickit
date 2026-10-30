@@ -70,9 +70,9 @@ describe('Ticket Detail & Attachment Lifecycle API', () => {
       expect(res.body.error.code).toBe('NOT_FOUND');
     });
 
-    it('returns 400 when requesterId is missing', async () => {
+    it('returns 401 when authentication is missing', async () => {
       const res = await request(app).get(`/api/tickets/${ticketId}`);
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(401);
     });
   });
 
@@ -100,7 +100,7 @@ describe('Ticket Detail & Attachment Lifecycle API', () => {
       attachmentId = res.body.id;
     });
 
-    it('returns 403 Forbidden when non-owner tries to add attachment', async () => {
+    it('returns 404 when non-owner tries to add attachment', async () => {
       const pdfContent = Buffer.from('%PDF-1.4 test');
 
       const res = await request(app)
@@ -112,7 +112,7 @@ describe('Ticket Detail & Attachment Lifecycle API', () => {
           contentType: 'application/pdf',
         });
 
-      expect(res.status).toBe(403);
+      expect(res.status).toBe(404);
     });
 
     it('returns 400 when no file is provided', async () => {
@@ -140,13 +140,13 @@ describe('Ticket Detail & Attachment Lifecycle API', () => {
       expect(res.body.error.code).toBe('VALIDATION_ERROR');
     });
 
-    it('returns 403 Forbidden when non-owner tries to remove', async () => {
+    it('returns 404 when non-owner tries to remove', async () => {
       const res = await request(app)
         .patch(`/api/attachments/${attachmentId}/remove`)
         .set('Authorization', `Bearer ${fixtures.tokens[1]}`)
         .send({ requesterId: REQUESTER_2_ID, removalReason: 'Wrong file uploaded.' });
 
-      expect(res.status).toBe(403);
+      expect(res.status).toBe(404);
     });
 
     it('API-07: soft-removes an attachment with a reason, preserving metadata', async () => {
@@ -185,11 +185,11 @@ describe('Ticket Detail & Attachment Lifecycle API', () => {
       expect(res.body.error.code).toBe('GONE');
     });
 
-    it('returns 403 Forbidden when non-owner tries to download', async () => {
+    it('returns 404 when non-owner tries to download', async () => {
       const res = await request(app)
         .get(`/api/attachments/${attachmentId}/download?requesterId=${REQUESTER_2_ID}`).set('Authorization', `Bearer ${fixtures.tokens[1]}`);
 
-      expect(res.status).toBe(403);
+      expect(res.status).toBe(404);
     });
   });
 });

@@ -53,11 +53,16 @@ describe('MIG-01: additive Actions Taken/workflow migrations preserve Lab 3 data
     };
     const before = await manifest();
     copyMigration('20261014090000_lab4_actions_taken');
-    copyMigration('20261028090000_lab4_ticket_workflow'); migrate();
+    copyMigration('20261028090000_lab4_ticket_workflow');
+    copyMigration('20261029090000_lab4_dashboard_indexes'); migrate();
     expect(await manifest()).toEqual(before);
     expect(await client.ticket.findUniqueOrThrow({ where: { id: ticket.id } })).toMatchObject({ version: 1, status: 'RESOLVED', itPriority: null, requesterResolvedIndication: false, requesterResolvedAt: null, resolutionSummary: null, resolvedAt: null, closedAt: null });
     expect(await client.actionTaken.count()).toBe(0);
     expect(await client.ticketStatusEvent.count()).toBe(0);
+    const indexes = await client.$queryRaw<{ indexname: string }[]>`SELECT indexname FROM pg_indexes WHERE schemaname = ${schema} AND tablename = 'Ticket'`;
+    expect(indexes.map(index => index.indexname)).toEqual(expect.arrayContaining([
+      'Ticket_requesterId_status_resolvedAt_idx', 'Ticket_ownerId_status_idx', 'Ticket_updatedAt_id_idx',
+    ]));
   }, 60000);
   afterAll(async () => {
     await client?.$disconnect();

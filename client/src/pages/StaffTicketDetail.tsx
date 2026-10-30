@@ -1,3 +1,4 @@
+import { downloadAttachment } from '../utils/downloadAttachment';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { ActionsTaken, type ActionTicket } from '../components/tickets/ActionsTaken';
 import { WorkflowConfirmation } from '../components/tickets/WorkflowConfirmation';
@@ -692,9 +693,9 @@ export const StaffTicketDetail: React.FC<StaffTicketDetailProps> = ({ ticketId, 
         <div className={['actions', 'history'].includes(activeTab) ? 'col-12' : 'col-12 col-lg-7'}>
           <div className="card shadow-sm border-0 bg-white p-3 p-md-4 mb-3" data-testid="ticket-details-card">
             {/* Ticket Identifier Header */}
-            <div className="d-flex justify-content-between align-items-start border-bottom pb-3 mb-3">
-              <div>
-                <span className="badge bg-light text-muted font-monospace mb-1">{ticket.ticketNumber}</span>
+            <div className="d-flex justify-content-between align-items-start gap-2 border-bottom pb-3 mb-3">
+              <div style={{ minWidth: 0 }}>
+                <span className="badge bg-light text-muted font-monospace mb-1" style={{ maxWidth: '100%', whiteSpace: 'normal', overflowWrap: 'anywhere' }}>{ticket.ticketNumber}</span>
                 <h5 className="fw-bold mb-0 text-dark">{ticket.summary}</h5>
               </div>
               <div>{renderStatusBadge(ticket.status)}</div>
@@ -829,14 +830,10 @@ export const StaffTicketDetail: React.FC<StaffTicketDetailProps> = ({ ticketId, 
                             <span className="fw-semibold small">{att.originalName}</span>
                             <small className="text-muted ms-2">({formatFileSize(att.sizeBytes)})</small>
                           </div>
-                          <a
-                            href={`${API_BASE}/api/attachments/${att.id}/download?token=${token || ''}`}
-                            className="btn btn-outline-secondary btn-sm py-0 px-2"
-                            download
-                            data-testid={`download-btn-${att.id}`}
-                          >
+                          <button type="button" className="btn btn-outline-secondary btn-sm py-0 px-2" data-testid={`download-btn-${att.id}`}
+                            onClick={() => void downloadAttachment(att.id, att.originalName, token).catch(err => showToast('danger', err.message))}>
                             Download
-                          </a>
+                          </button>
                         </div>
                       ))}
                     </div>

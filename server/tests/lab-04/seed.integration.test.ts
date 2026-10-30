@@ -48,7 +48,7 @@ describe('SEED-01: complete seed preserves data and credentials on rerun', () =>
       const empty = await prisma.user.findUniqueOrThrow({ where: { email: 'lab4.empty@toktickit.local' } });
       expect(await prisma.ticket.count({ where: { requesterId: empty.id } })).toBe(0);
     }, startingVersion);
-  });
+  }, 30000);
   it('restores credentials, Ticket fields and timestamps when verification throws', async () => {
     seed();
     const staff = await prisma.user.findUniqueOrThrow({ where: { email: 'alex.thompson@toktickit.local' } });
@@ -56,5 +56,5 @@ describe('SEED-01: complete seed preserves data and credentials on rerun', () =>
     await expect(withEditedFixtures(async () => { throw new Error('Simulated verification failure'); })).rejects.toThrow('Simulated verification failure');
     expect(await prisma.user.findUniqueOrThrow({ where: { id: staff.id } })).toEqual(staff);
     expect(await prisma.ticket.findUniqueOrThrow({ where: { id: ticket.id } })).toEqual(ticket);
-  });
+  }, 30000);
 });

@@ -12,7 +12,7 @@ const prisma = new PrismaClient();
 // ============================================================================
 
 // GET /api/tickets/:id/comments
-router.get('/tickets/:id/comments', authenticate, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+router.get('/tickets/:id/comments', authenticate, enforcePasswordChange, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const ticketId = Number(req.params.id);
     if (isNaN(ticketId)) {
@@ -68,7 +68,7 @@ router.get('/tickets/:id/comments', authenticate, async (req: AuthenticatedReque
 });
 
 // POST /api/tickets/:id/comments
-router.post('/tickets/:id/comments', authenticate, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+router.post('/tickets/:id/comments', authenticate, enforcePasswordChange, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const ticketId = Number(req.params.id);
     if (isNaN(ticketId)) {
@@ -146,7 +146,7 @@ router.post('/tickets/:id/comments', authenticate, async (req: AuthenticatedRequ
 // ============================================================================
 
 // GET /api/tickets/:id/notes (Restricted to IT_STAFF and ADMINISTRATOR)
-router.get('/tickets/:id/notes', authenticate, requireRole(['IT_STAFF', 'ADMINISTRATOR']), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+router.get('/tickets/:id/notes', authenticate, enforcePasswordChange, requireRole(['IT_STAFF', 'ADMINISTRATOR']), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const ticketId = Number(req.params.id);
     if (isNaN(ticketId)) {
@@ -194,7 +194,7 @@ router.get('/tickets/:id/notes', authenticate, requireRole(['IT_STAFF', 'ADMINIS
 });
 
 // POST /api/tickets/:id/notes (Restricted to IT_STAFF and ADMINISTRATOR)
-router.post('/tickets/:id/notes', authenticate, requireRole(['IT_STAFF', 'ADMINISTRATOR']), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+router.post('/tickets/:id/notes', authenticate, enforcePasswordChange, requireRole(['IT_STAFF', 'ADMINISTRATOR']), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const ticketId = Number(req.params.id);
     if (isNaN(ticketId)) {

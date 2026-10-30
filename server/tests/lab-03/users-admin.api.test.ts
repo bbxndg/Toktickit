@@ -42,6 +42,7 @@ describe('Lab 3: Administrator User Management APIs', () => {
         passwordHash: hashPassword('Password123!'),
         isActive: true,
         role: Role.REQUESTER,
+        isPasswordChangeRequired: false,
       },
       create: {
         name: 'Admin Test Requester',
