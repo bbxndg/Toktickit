@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test';
+import { assertNamedControls, test, expect, type Page } from './browser-fixtures';
 
 async function login(page: Page, role: 'REQUESTER' | 'IT_STAFF') {
   const email = process.env[`E2E_${role}_EMAIL`];
@@ -33,6 +33,7 @@ test('staff records work, resolves the gate and requester reads the result', asy
   const actionRow = page.locator('tr').filter({ hasText: 'Investigate browser workflow fixture' });
   await expect(actionRow).toBeVisible();
   await expect(page.getByText('Complete or cancel pending actions before resolving this ticket.')).toBeVisible();
+  await assertNamedControls(page);
   await page.screenshot({ path: info.outputPath('resolution-gate.png'), fullPage: true });
   await actionRow.getByRole('button', { name: 'Edit' }).click();
   await page.getByLabel('Status', { exact: true }).selectOption('COMPLETED');
@@ -42,6 +43,7 @@ test('staff records work, resolves the gate and requester reads the result', asy
   await expect(actionRow.getByText('Completed')).toBeVisible();
   await actionRow.getByRole('button', { name: 'View' }).click();
   await expect(page.getByRole('dialog', { name: 'View Action' })).toContainText('Verified the problem was fixed.');
+  await assertNamedControls(page);
   await page.screenshot({ path: info.outputPath('completed-action-view.png'), fullPage: true });
   await page.getByRole('dialog', { name: 'View Action' }).getByRole('button', { name: 'Close', exact: true }).click();
   await expect(page.getByText('Complete or cancel pending actions before resolving this ticket.')).toHaveCount(0);
@@ -63,6 +65,7 @@ test('staff records work, resolves the gate and requester reads the result', asy
   await page.getByTestId('indicate-resolved-btn').click();
   await page.getByTestId('confirm-resolve-btn').click();
   await expect(page.getByText('Sent to IT for review').first()).toBeVisible();
+  await assertNamedControls(page);
   await page.screenshot({ path: info.outputPath('requester-indication.png'), fullPage: true });
   await page.getByRole('button', { name: /Sign Out/ }).click();
   await login(page, 'IT_STAFF');
@@ -83,11 +86,13 @@ test('staff records work, resolves the gate and requester reads the result', asy
   await expect(transition).toHaveValue('CLOSED');
   await page.getByRole('button', { name: 'Status History' }).click();
   await expect(page.getByRole('region', { name: 'Status History' })).toContainText('Closed');
+  await assertNamedControls(page);
   await page.screenshot({ path: info.outputPath('status-history.png'), fullPage: true });
   await page.getByRole('button', { name: /Sign Out/ }).click();
   await login(page, 'REQUESTER');
   await page.getByRole('button', { name: 'Actions Taken', exact: true }).click();
   await expect(page.getByText('Investigate browser workflow fixture').first()).toBeVisible();
   await expect(page.getByRole('button', { name: 'Add Action' })).toHaveCount(0);
+  await assertNamedControls(page);
   await page.screenshot({ path: info.outputPath('requester-readonly.png'), fullPage: true });
 });
