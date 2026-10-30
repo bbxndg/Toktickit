@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { ActionDialog } from '../components/tickets/ActionsTaken';
 import { useAuth, type UserRole } from '../context/AuthContext';
 
 interface ManagedUser {
@@ -264,6 +265,7 @@ export const UserManagement: React.FC = () => {
                 placeholder="Search by name or email..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
+                aria-label="Search users"
                 data-testid="user-search-input"
               />
             </div>
@@ -272,6 +274,7 @@ export const UserManagement: React.FC = () => {
                 className="form-select form-select-sm"
                 value={roleFilter}
                 onChange={(e) => setRoleFilter(e.target.value)}
+                aria-label="User role filter"
                 data-testid="user-role-filter"
               >
                 <option value="">All Roles</option>
@@ -394,20 +397,15 @@ export const UserManagement: React.FC = () => {
 
       {/* Create User Modal */}
       {isCreateOpen && (
-        <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }} data-testid="create-user-modal">
-          <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content">
-              <div className="modal-header">
-                <h5 className="modal-title fw-bold">Create New User Account</h5>
-                <button type="button" className="btn-close" onClick={() => setIsCreateOpen(false)}></button>
-              </div>
+        <ActionDialog title="Create New User Account" testId="create-user-modal" onClose={() => { if (!isSubmittingCreate) setIsCreateOpen(false); }}>
               <form onSubmit={handleCreateSubmit} data-testid="create-user-form">
                 <div className="modal-body">
                   {createError && <div className="alert alert-danger py-2 small mb-3">{createError}</div>}
 
                   <div className="mb-3">
-                    <label className="form-label small fw-semibold">Full Name *</label>
+                    <label htmlFor="create-user-name" className="form-label small fw-semibold">Full Name *</label>
                     <input
+                      id="create-user-name"
                       type="text"
                       className="form-control form-control-sm"
                       value={createName}
@@ -418,8 +416,9 @@ export const UserManagement: React.FC = () => {
                   </div>
 
                   <div className="mb-3">
-                    <label className="form-label small fw-semibold">Email Address *</label>
+                    <label htmlFor="create-user-email" className="form-label small fw-semibold">Email Address *</label>
                     <input
+                      id="create-user-email"
                       type="email"
                       className="form-control form-control-sm"
                       value={createEmail}
@@ -430,8 +429,9 @@ export const UserManagement: React.FC = () => {
                   </div>
 
                   <div className="mb-3">
-                    <label className="form-label small fw-semibold">Department</label>
+                    <label htmlFor="create-user-department" className="form-label small fw-semibold">Department</label>
                     <input
+                      id="create-user-department"
                       type="text"
                       className="form-control form-control-sm"
                       value={createDepartment}
@@ -441,8 +441,9 @@ export const UserManagement: React.FC = () => {
                   </div>
 
                   <div className="mb-3">
-                    <label className="form-label small fw-semibold">Role *</label>
+                    <label htmlFor="create-user-role" className="form-label small fw-semibold">Role *</label>
                     <select
+                      id="create-user-role"
                       className="form-select form-select-sm"
                       value={createRole}
                       onChange={(e) => setCreateRole(e.target.value as UserRole)}
@@ -455,8 +456,9 @@ export const UserManagement: React.FC = () => {
                   </div>
 
                   <div className="mb-3">
-                    <label className="form-label small fw-semibold">Initial Password *</label>
+                    <label htmlFor="create-user-password" className="form-label small fw-semibold">Initial Password *</label>
                     <input
+                      id="create-user-password"
                       type="password"
                       className="form-control form-control-sm"
                       placeholder="Min 8 chars with uppercase, lowercase, digit, symbol"
@@ -503,20 +505,12 @@ export const UserManagement: React.FC = () => {
                   </button>
                 </div>
               </form>
-            </div>
-          </div>
-        </div>
+        </ActionDialog>
       )}
 
       {/* Edit User Modal */}
       {editingUser && (
-        <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }} data-testid="edit-user-modal">
-          <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content">
-              <div className="modal-header">
-                <h5 className="modal-title fw-bold">Edit User: {editingUser.name}</h5>
-                <button type="button" className="btn-close" onClick={() => setEditingUser(null)}></button>
-              </div>
+        <ActionDialog title={`Edit User: ${editingUser.name}`} testId="edit-user-modal" onClose={() => { if (!isSubmittingEdit) setEditingUser(null); }}>
               <form onSubmit={handleEditSubmit} data-testid="edit-user-form">
                 <div className="modal-body">
                   {editError && <div className="alert alert-danger py-2 small mb-3">{editError}</div>}
@@ -535,8 +529,9 @@ export const UserManagement: React.FC = () => {
                   )}
 
                   <div className="mb-3">
-                    <label className="form-label small fw-semibold">Full Name *</label>
+                    <label htmlFor="edit-user-name" className="form-label small fw-semibold">Full Name *</label>
                     <input
+                      id="edit-user-name"
                       type="text"
                       className="form-control form-control-sm"
                       value={editName}
@@ -547,8 +542,9 @@ export const UserManagement: React.FC = () => {
                   </div>
 
                   <div className="mb-3">
-                    <label className="form-label small fw-semibold">Email Address *</label>
+                    <label htmlFor="edit-user-email" className="form-label small fw-semibold">Email Address *</label>
                     <input
+                      id="edit-user-email"
                       type="email"
                       className="form-control form-control-sm"
                       value={editEmail}
@@ -559,8 +555,9 @@ export const UserManagement: React.FC = () => {
                   </div>
 
                   <div className="mb-3">
-                    <label className="form-label small fw-semibold">Department</label>
+                    <label htmlFor="edit-user-department" className="form-label small fw-semibold">Department</label>
                     <input
+                      id="edit-user-department"
                       type="text"
                       className="form-control form-control-sm"
                       value={editDepartment}
@@ -570,8 +567,9 @@ export const UserManagement: React.FC = () => {
                   </div>
 
                   <div className="mb-3">
-                    <label className="form-label small fw-semibold">Role *</label>
+                    <label htmlFor="edit-user-role" className="form-label small fw-semibold">Role *</label>
                     <select
+                      id="edit-user-role"
                       className="form-select form-select-sm"
                       value={editRole}
                       onChange={(e) => setEditRole(e.target.value as UserRole)}
@@ -626,20 +624,12 @@ export const UserManagement: React.FC = () => {
                   </button>
                 </div>
               </form>
-            </div>
-          </div>
-        </div>
+        </ActionDialog>
       )}
 
       {/* Reset Password Modal */}
       {resettingUser && (
-        <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
-          <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content">
-              <div className="modal-header">
-                <h5 className="modal-title fw-bold">Reset Password: {resettingUser.name}</h5>
-                <button type="button" className="btn-close" onClick={() => setResettingUser(null)}></button>
-              </div>
+        <ActionDialog title={`Reset Password: ${resettingUser.name}`} testId="reset-password-modal" onClose={() => { if (!isSubmittingReset) setResettingUser(null); }}>
               <form onSubmit={handleResetSubmit} data-testid="reset-password-form">
                 <div className="modal-body">
                   <p className="text-muted small">
@@ -648,8 +638,9 @@ export const UserManagement: React.FC = () => {
                   {resetError && <div className="alert alert-danger py-2 small mb-3">{resetError}</div>}
 
                   <div className="mb-3">
-                    <label className="form-label small fw-semibold">New Initial Password *</label>
+                    <label htmlFor="reset-user-password-input" className="form-label small fw-semibold">New Initial Password *</label>
                     <input
+                      id="reset-user-password-input"
                       type="password"
                       className="form-control form-control-sm"
                       placeholder="Min 8 chars, uppercase, lowercase, digit, symbol"
@@ -679,9 +670,7 @@ export const UserManagement: React.FC = () => {
                   </button>
                 </div>
               </form>
-            </div>
-          </div>
-        </div>
+        </ActionDialog>
       )}
     </div>
   );
