@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import request from 'supertest';
 import app from '../../src/index';
@@ -53,4 +53,39 @@ describe('Lab 4 protected routes', () => {
     }
     expect(await db.attachment.findUniqueOrThrow({ where: { id: attachmentId } })).toEqual(before);
   });
+  it('rejects malformed Ticket IDs consistently before reading or accepting a file', async () => {
+    const staff = await db.user.create({ data: { name: 'ID test staff', email: `id-staff-${ticketId}@test.local`,
+      role: 'IT_STAFF', passwordHash: hashPassword('Password123!'), isPasswordChangeRequired: false } });
+    try {
+      const staffToken = generateToken(staff);
+      for (const id of [`${ticketId}abc`, '0', '-1', '1.5', '1e3', '2147483648', `0${ticketId}`]) {
+        for (const suffix of ['', '/comments', '/notes']) {
+          const auth = suffix === '/notes' ? staffToken : fixtures.tokens[0];
+          expect((await request(app).get(`/api/tickets/${id}${suffix}`).set('Authorization', `Bearer ${auth}`)).status, id + suffix).toBe(400);
+          if (suffix) expect((await request(app).post(`/api/tickets/${id}${suffix}`).set('Authorization', `Bearer ${auth}`).send({ content: 'Malformed ID' })).status).toBe(400);
+        }
+        expect((await request(app).get(`/api/staff/tickets/${id}`).set('Authorization', `Bearer ${staffToken}`)).status).toBe(400);
+        expect((await request(app).post(`/api/tickets/${id}/attachments`).set('Authorization', `Bearer ${fixtures.tokens[0]}`)).status).toBe(400);
+      }
+      expect(await db.attachment.count({ where: { ticketId } })).toBe(1);
+    } finally { await db.user.delete({ where: { id: staff.id } }); }
+  });
+
+  it('allows only one of two concurrent uploads when four active attachments exist', async () => {
+    await db.attachment.createMany({ data: [0, 1, 2, 3].map(n => ({ ticketId, filename: `limit-${ticketId}-${n}.pdf`,
+      originalName: `limit-${n}.pdf`, mimeType: 'application/pdf', sizeBytes: 1 })) });
+    const beforeFiles = new Set(fs.readdirSync(path.dirname(fixturePath)));
+    try {
+      const results = await Promise.all([1, 2].map(n => request(app).post(`/api/tickets/${ticketId}/attachments`)
+        .set('Authorization', `Bearer ${fixtures.tokens[0]}`).attach('file', Buffer.from('%PDF-1.4 test'), `parallel-${ticketId}-${n}.pdf`)));
+      expect(results.map(result => result.status).sort()).toEqual([201, 400]);
+      expect(await db.attachment.count({ where: { ticketId, isRemoved: false } })).toBe(5);
+      await vi.waitFor(() => expect(fs.readdirSync(path.dirname(fixturePath)).filter(name => !beforeFiles.has(name))).toHaveLength(1));
+    } finally {
+      const files = await db.attachment.findMany({ where: { ticketId, originalName: { startsWith: `parallel-${ticketId}-` } } });
+      for (const file of files) fs.rmSync(path.join(path.dirname(fixturePath), file.filename), { force: true });
+      await db.attachment.deleteMany({ where: { ticketId, isRemoved: false } });
+    }
+  });
+
 });

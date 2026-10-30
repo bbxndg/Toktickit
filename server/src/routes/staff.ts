@@ -181,15 +181,7 @@ router.get('/staff/tickets', async (req: AuthenticatedRequest, res: Response) =>
 // GET /api/staff/tickets/:id - Retrieves full operational ticket details
 router.get('/staff/tickets/:id', async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const ticketId = parseInt(req.params.id as string, 10);
-    if (isNaN(ticketId)) {
-      return res.status(400).json({
-        error: {
-          code: 'VALIDATION_ERROR',
-          message: 'Invalid ticket ID.',
-        },
-      });
-    }
+    const ticketId = pathId(req.params.id);
 
     const ticket = await prisma.ticket.findUnique({
       where: { id: ticketId },
@@ -230,6 +222,7 @@ router.get('/staff/tickets/:id', async (req: AuthenticatedRequest, res: Response
       activeAttachmentsCount: ticket.attachments.filter((a) => !a.isRemoved).length,
     });
   } catch (error) {
+    if (error instanceof ApiError) return sendApiError(res, error);
     console.error('Failed to retrieve staff ticket detail:', error);
     return res.status(500).json({
       error: {
