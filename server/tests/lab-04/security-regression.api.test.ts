@@ -39,4 +39,18 @@ describe('Lab 4 protected routes', () => {
     const forged = generateToken({ id: fixtures.users[1].id, email: fixtures.users[1].email, role: 'ADMINISTRATOR' });
     expect((await request(app).get('/api/requesters').set('Authorization', `Bearer ${forged}`)).status).toBe(403);
   });
+  it('rejects malformed attachment IDs across download and all removal aliases without changing data', async () => {
+    const before = await db.attachment.findUniqueOrThrow({ where: { id: attachmentId } });
+    for (const id of [`${attachmentId}abc`, '0', '-1', '1.5', '1e3', '2147483648', '9007199254740992', `0${attachmentId}`]) {
+      const authorization = `Bearer ${fixtures.tokens[0]}`;
+      const result = await request(app).get(`/api/attachments/${id}/download`).set('Authorization', authorization);
+      expect(result.status, id).toBe(400); expect(result.body.error.code).toBe('VALIDATION_ERROR');
+      for (const method of ['patch', 'delete'] as const) for (const suffix of ['', '/remove']) {
+        const response = await request(app)[method](`/api/attachments/${id}${suffix}`).set('Authorization', authorization).send({ reason: 'Invalid identifier test' });
+        expect(response.status, `${method} ${id}${suffix}`).toBe(400);
+        expect(response.body.error.code).toBe('VALIDATION_ERROR');
+      }
+    }
+    expect(await db.attachment.findUniqueOrThrow({ where: { id: attachmentId } })).toEqual(before);
+  });
 });

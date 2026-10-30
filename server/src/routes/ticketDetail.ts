@@ -9,6 +9,11 @@ import { pendingActionsWhere, workflowDetail } from '../utils/ticketWorkflow';
 
 const router = Router();
 const prisma = new PrismaClient();
+const attachmentIdFromPath = (value: unknown): number | null => {
+  if (typeof value !== 'string' || !/^[1-9]\d*$/.test(value)) return null;
+  const id = Number(value);
+  return Number.isSafeInteger(id) && id <= 2147483647 ? id : null;
+};
 
 // ---------------------------------------------------------------------------
 // GET /api/tickets/:id — Ticket Detail with all attachment metadata
@@ -215,12 +220,12 @@ router.post('/tickets/:id/attachments', authenticate, enforcePasswordChange, asy
 // ---------------------------------------------------------------------------
 router.get('/attachments/:id/download', authenticate, enforcePasswordChange, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const attachmentId = parseInt(req.params.id as string, 10);
+    const attachmentId = attachmentIdFromPath(req.params.id);
 
     const requesterId = req.user!.id;
     const isStaffOrAdmin = req.user!.role !== 'REQUESTER';
 
-    if (isNaN(attachmentId)) {
+    if (attachmentId === null) {
       return res.status(400).json({
         error: { code: 'VALIDATION_ERROR', message: 'Invalid attachment ID.' },
       });
@@ -293,14 +298,14 @@ router.get('/attachments/:id/download', authenticate, enforcePasswordChange, asy
 // ---------------------------------------------------------------------------
 const handleRemoveAttachment = async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const attachmentId = parseInt(req.params.id as string, 10);
+    const attachmentId = attachmentIdFromPath(req.params.id);
     const { reason, removalReason } = req.body || {};
     const effectiveReason = removalReason || reason;
 
     const parsedRequesterId = req.user!.id;
     const isStaffOrAdmin = req.user!.role !== 'REQUESTER';
 
-    if (isNaN(attachmentId)) {
+    if (attachmentId === null) {
       return res.status(400).json({
         error: { code: 'VALIDATION_ERROR', message: 'Invalid attachment ID.' },
       });
