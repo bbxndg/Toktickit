@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import { PrismaClient, Role } from '@prisma/client';
 import { authenticate, enforcePasswordChange, requireRole, AuthenticatedRequest } from '../middleware/auth';
 import { validatePasswordComplexity, hashPassword } from '../utils/auth';
+import { ApiError, invalid, pathId, sendApiError } from '../utils/ticketWrites';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -87,7 +88,13 @@ router.post(
         });
       }
 
-      if (!initialPassword) {
+      if (isActive !== undefined && typeof isActive !== 'boolean') {
+        invalid('isActive', 'Active status must be a boolean.');
+      }
+      if (department !== undefined && department !== null && typeof department !== 'string') {
+        invalid('department', 'Department must be text or null.');
+      }
+      if (typeof initialPassword !== 'string' || !initialPassword) {
         validationErrors.push({ field: 'initialPassword', message: 'Initial password is required.' });
       } else {
         const complexity = validatePasswordComplexity(initialPassword);
@@ -135,7 +142,7 @@ router.post(
           department: department ? department.trim() : null,
           role: role as Role,
           passwordHash: hashPassword(initialPassword),
-          isActive: isActive !== undefined ? Boolean(isActive) : true,
+          isActive: isActive ?? true,
           isPasswordChangeRequired: true,
         },
         select: {
@@ -153,6 +160,7 @@ router.post(
 
       return res.status(201).json(newUser);
     } catch (error) {
+      if (error instanceof ApiError) return sendApiError(res, error);
       console.error('Failed to create user:', error);
       return res.status(500).json({
         error: {
@@ -172,122 +180,53 @@ router.patch(
   requireRole(Role.ADMINISTRATOR),
   async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const targetUserId = parseInt(req.params.id as string, 10);
-      if (isNaN(targetUserId)) {
-        return res.status(400).json({
-          error: {
-            code: 'VALIDATION_ERROR',
-            message: 'Invalid user ID.',
-          },
-        });
-      }
-
-      const targetUser = await prisma.user.findUnique({
-        where: { id: targetUserId },
-      });
-
-      if (!targetUser) {
-        return res.status(404).json({
-          error: {
-            code: 'NOT_FOUND',
-            message: 'User not found.',
-          },
-        });
-      }
-
+      const targetUserId = pathId(req.params.id);
       const { name, email, department, role, isActive } = req.body;
+      if (isActive !== undefined && typeof isActive !== 'boolean') invalid('isActive', 'Active status must be a boolean.');
+      if (name !== undefined && (typeof name !== 'string' || !name.trim())) invalid('name', 'Name is required.');
+      if (email !== undefined && (typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()))) invalid('email', 'A valid email address is required.');
+      if (department !== undefined && department !== null && typeof department !== 'string') invalid('department', 'Department must be text or null.');
+      if (role !== undefined && !Object.values(Role).includes(role)) invalid('role', 'Invalid role.');
 
-      // BR-17: Self-deactivation and self-role change prevention
-      if (req.user && req.user.id === targetUserId) {
-        if (isActive === false) {
-          return res.status(400).json({
-            error: {
-              code: 'SELF_DEACTIVATION_BLOCKED',
-              message: 'Administrators cannot deactivate their own account.',
-            },
-          });
+      const updatedUser = await prisma.$transaction(async tx => {
+        // Serialize administrator pool changes before reading the actor, target and count.
+        // An already authenticated request must not act after its account loses access.
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(72401, 1)`;
+        const actor = await tx.user.findUnique({ where: { id: req.user!.id } });
+        if (!actor?.isActive || actor.role !== Role.ADMINISTRATOR || actor.isPasswordChangeRequired) {
+          throw new ApiError(403, 'FORBIDDEN', 'An active administrator account is required.');
         }
-        if (role && role !== Role.ADMINISTRATOR) {
-          return res.status(400).json({
-            error: {
-              code: 'SELF_ROLE_CHANGE_BLOCKED',
-              message: 'Administrators cannot remove their own administrator role.',
-            },
-          });
+        const targetUser = await tx.user.findUnique({ where: { id: targetUserId } });
+        if (!targetUser) throw new ApiError(404, 'NOT_FOUND', 'User not found.');
+        if (actor.id === targetUserId) {
+          if (isActive === false) throw new ApiError(400, 'SELF_DEACTIVATION_BLOCKED', 'Administrators cannot deactivate their own account.');
+          if (role !== undefined && role !== Role.ADMINISTRATOR) throw new ApiError(400, 'SELF_ROLE_CHANGE_BLOCKED', 'Administrators cannot remove their own administrator role.');
         }
-      }
-
-      // BR-18: Last active administrator protection
-      const isDeactivatingAdmin =
-        targetUser.role === Role.ADMINISTRATOR &&
-        targetUser.isActive &&
-        (isActive === false || (role && role !== Role.ADMINISTRATOR));
-
-      if (isDeactivatingAdmin) {
-        const activeAdminCount = await prisma.user.count({
-          where: {
-            role: Role.ADMINISTRATOR,
-            isActive: true,
+        if (targetUser.role === Role.ADMINISTRATOR && targetUser.isActive &&
+          (isActive === false || (role !== undefined && role !== Role.ADMINISTRATOR))) {
+          const count = await tx.user.count({ where: { role: Role.ADMINISTRATOR, isActive: true } });
+          if (count <= 1) throw new ApiError(400, 'LAST_ADMIN_PROTECTION', 'Cannot deactivate or reassign the role of the last active administrator.');
+        }
+        if (email !== undefined && await tx.user.findFirst({ where: {
+          email: { equals: email.trim(), mode: 'insensitive' }, id: { not: targetUserId },
+        } })) throw new ApiError(409, 'CONFLICT', 'Email is already in use by another account.');
+        return tx.user.update({
+          where: { id: targetUserId },
+          data: {
+            ...(name !== undefined ? { name: name.trim() } : {}),
+            ...(email !== undefined ? { email: email.trim().toLowerCase() } : {}),
+            ...(department !== undefined ? { department: department?.trim() || null } : {}),
+            ...(role !== undefined ? { role } : {}),
+            ...(isActive !== undefined ? { isActive } : {}),
           },
+          select: { id: true, name: true, email: true, department: true, role: true,
+            isActive: true, isPasswordChangeRequired: true, createdAt: true, updatedAt: true },
         });
-
-        if (activeAdminCount <= 1) {
-          return res.status(400).json({
-            error: {
-              code: 'LAST_ADMIN_PROTECTION',
-              message: 'Cannot deactivate or reassign the role of the last active administrator.',
-            },
-          });
-        }
-      }
-
-      // Check email conflict if email changed
-      if (email && email.trim().toLowerCase() !== targetUser.email.toLowerCase()) {
-        const existingEmail = await prisma.user.findFirst({
-          where: {
-            email: {
-              equals: email.trim(),
-              mode: 'insensitive',
-            },
-            id: { not: targetUserId },
-          },
-        });
-
-        if (existingEmail) {
-          return res.status(409).json({
-            error: {
-              code: 'CONFLICT',
-              message: 'Email is already in use by another account.',
-            },
-          });
-        }
-      }
-
-      const updateData: any = {};
-      if (name !== undefined) updateData.name = name.trim();
-      if (email !== undefined) updateData.email = email.trim().toLowerCase();
-      if (department !== undefined) updateData.department = department ? department.trim() : null;
-      if (role !== undefined && Object.values(Role).includes(role)) updateData.role = role;
-      if (isActive !== undefined) updateData.isActive = Boolean(isActive);
-
-      const updatedUser = await prisma.user.update({
-        where: { id: targetUserId },
-        data: updateData,
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          department: true,
-          role: true,
-          isActive: true,
-          isPasswordChangeRequired: true,
-          createdAt: true,
-          updatedAt: true,
-        },
       });
 
       return res.status(200).json(updatedUser);
     } catch (error) {
+      if (error instanceof ApiError) return sendApiError(res, error);
       console.error('Failed to update user:', error);
       return res.status(500).json({
         error: {
@@ -307,15 +246,7 @@ router.post(
   requireRole(Role.ADMINISTRATOR),
   async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const targetUserId = parseInt(req.params.id as string, 10);
-      if (isNaN(targetUserId)) {
-        return res.status(400).json({
-          error: {
-            code: 'VALIDATION_ERROR',
-            message: 'Invalid user ID.',
-          },
-        });
-      }
+      const targetUserId = pathId(req.params.id);
 
       const targetUser = await prisma.user.findUnique({
         where: { id: targetUserId },
@@ -331,7 +262,7 @@ router.post(
       }
 
       const { initialPassword } = req.body;
-      if (!initialPassword) {
+      if (typeof initialPassword !== 'string' || !initialPassword) {
         return res.status(400).json({
           error: {
             code: 'VALIDATION_ERROR',
@@ -362,6 +293,7 @@ router.post(
         message: 'Initial password set successfully; user must change password upon next login',
       });
     } catch (error) {
+      if (error instanceof ApiError) return sendApiError(res, error);
       console.error('Failed to reset user password:', error);
       return res.status(500).json({
         error: {

@@ -278,3 +278,8 @@ body {
 }
 
 
+
+.zg-card[role="button"]:focus-visible {
+  outline: 2px solid var(--zg-secondary);
+  outline-offset: 2px;
+}

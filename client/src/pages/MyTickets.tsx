@@ -269,6 +269,7 @@ export const MyTickets: React.FC<MyTicketsProps> = ({ onCreateTicket, onSelectTi
                   setSearchInput(e.target.value);
                   setPage(1);
                 }}
+                aria-label="Search tickets"
                 data-testid="search-input"
               />
             </div>
@@ -283,7 +284,8 @@ export const MyTickets: React.FC<MyTicketsProps> = ({ onCreateTicket, onSelectTi
                 setCategoryId(e.target.value);
                 setPage(1);
               }}
-              data-testid="category-filter"
+              aria-label="Category filter"
+                data-testid="category-filter"
             >
               <option value="">All Categories</option>
               {categories.map((c) => (
@@ -303,7 +305,8 @@ export const MyTickets: React.FC<MyTicketsProps> = ({ onCreateTicket, onSelectTi
                 setRequestedPriority(e.target.value);
                 setPage(1);
               }}
-              data-testid="priority-filter"
+              aria-label="Requested priority filter"
+                data-testid="priority-filter"
             >
               <option value="">All Priorities</option>
               <option value="LOW">Low</option>
@@ -322,7 +325,8 @@ export const MyTickets: React.FC<MyTicketsProps> = ({ onCreateTicket, onSelectTi
                 setStatus(e.target.value); setStatusGroup(''); setResolvedSince(''); setResolvedUntil('');
                 setPage(1);
               }}
-              data-testid="status-filter"
+              aria-label="Ticket status filter"
+                data-testid="status-filter"
             >
               <option value="">All Statuses</option>
               <option value="NEW">New</option>
@@ -423,7 +427,9 @@ export const MyTickets: React.FC<MyTicketsProps> = ({ onCreateTicket, onSelectTi
                       data-testid={`ticket-row-${t.id}`}
                     >
                       <td className="py-3 px-3 fw-bold font-monospace" style={{ color: 'var(--zg-primary)' }}>
-                        {t.ticketNumber}
+                        <button type="button" className="btn btn-link p-0 fw-bold font-monospace text-start" style={{ color: 'inherit' }}
+                          aria-label={`Open Ticket ${t.ticketNumber}`} disabled={!onSelectTicket}
+                          onClick={event => { event.stopPropagation(); onSelectTicket?.(t.id); }}>{t.ticketNumber}</button>
                         {t.activeAttachmentsCount > 0 && (
                           <span className="ms-1 small text-muted" title={`${t.activeAttachmentsCount} attachments`}>
                             📎
@@ -457,6 +463,9 @@ export const MyTickets: React.FC<MyTicketsProps> = ({ onCreateTicket, onSelectTi
                 className="zg-card p-3 mb-3 shadow-sm"
                 style={{ cursor: onSelectTicket ? 'pointer' : 'default' }}
                 onClick={() => onSelectTicket?.(t.id)}
+                role={onSelectTicket ? 'button' : undefined} tabIndex={onSelectTicket ? 0 : undefined}
+                aria-label={`Open Ticket ${t.ticketNumber}`}
+                onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelectTicket?.(t.id); } }}
                 data-testid={`ticket-card-${t.id}`}
               >
                 <div className="d-flex justify-content-between align-items-center mb-2">

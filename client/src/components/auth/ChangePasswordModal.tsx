@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { ActionDialog } from '../tickets/ActionsTaken';
 import { useAuth } from '../../context/AuthContext';
 
 export const ChangePasswordModal: React.FC = () => {
@@ -57,21 +58,7 @@ export const ChangePasswordModal: React.FC = () => {
   };
 
   return (
-    <div
-      className="modal show d-block"
-      tabIndex={-1}
-      role="dialog"
-      style={{ backgroundColor: 'rgba(0, 0, 0, 0.7)', backdropFilter: 'blur(4px)', zIndex: 1050 }}
-      data-testid="change-password-modal"
-    >
-      <div className="modal-dialog modal-dialog-centered" role="document">
-        <div className="modal-content border-0 shadow">
-          <div className="modal-header border-bottom-0 pb-0">
-            <h5 className="modal-title fw-bold" style={{ color: 'var(--zg-primary)' }}>
-              🔒 Password Change Required
-            </h5>
-          </div>
-
+    <ActionDialog title="Password Change Required" testId="change-password-modal" onClose={() => {}} dismissible={false}>
           <form onSubmit={handleSubmit} data-testid="change-password-form" autoComplete="off">
             {/* Hidden field to give browser password managers clear account context and prevent improper autofill */}
             <input
@@ -95,8 +82,9 @@ export const ChangePasswordModal: React.FC = () => {
               )}
 
               <div className="mb-3">
-                <label className="form-label small fw-semibold">Current / Temporary Password</label>
+                <label htmlFor="current-password-input" className="form-label small fw-semibold">Current / Temporary Password</label>
                 <input
+                      id="current-password-input"
                   type="password"
                   className="form-control"
                   placeholder="Enter current or temporary password"
@@ -105,13 +93,15 @@ export const ChangePasswordModal: React.FC = () => {
                   disabled={isLoading}
                   required
                   autoComplete="current-password"
+                  data-initial-focus
                   data-testid="current-password-input"
                 />
               </div>
 
               <div className="mb-3">
-                <label className="form-label small fw-semibold">New Password</label>
+                <label htmlFor="new-password-input" className="form-label small fw-semibold">New Password</label>
                 <input
+                      id="new-password-input"
                   type="password"
                   className={`form-control ${currentPassword && newPassword && currentPassword === newPassword ? 'is-invalid' : ''}`}
                   placeholder="Enter compliant new password"
@@ -128,8 +118,9 @@ export const ChangePasswordModal: React.FC = () => {
               </div>
 
               <div className="mb-3">
-                <label className="form-label small fw-semibold">Confirm New Password</label>
+                <label htmlFor="confirm-password-input" className="form-label small fw-semibold">Confirm New Password</label>
                 <input
+                      id="confirm-password-input"
                   type="password"
                   className={`form-control ${confirmPassword && !isMatching ? 'is-invalid' : ''}`}
                   placeholder="Re-enter new password"
@@ -195,9 +186,7 @@ export const ChangePasswordModal: React.FC = () => {
               </button>
             </div>
           </form>
-        </div>
-      </div>
-    </div>
+    </ActionDialog>
   );
 };
 

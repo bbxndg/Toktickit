@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import net from 'node:net';
-import { generateToken } from '../../src/utils/auth';
+import { hashPassword } from '../../src/utils/auth';
 
 const suffix = randomUUID().replaceAll('-', '');
 const schema = `lab4_recovery_${suffix}`;
@@ -35,17 +35,29 @@ describe('MIG-02 isolated database and upload recovery', () => {
       if (result.status !== 0) throw Error(`${command} failed: ${result.stderr}`);
     };
     run(process.execPath, [path.resolve('node_modules/prisma/build/index.js'), 'migrate', 'deploy'], { ...process.env, DATABASE_URL: sourceUrl.toString() });
-    const user = await source.user.create({ data: { name: 'Recovery user', email: `${schema}@test.local`, passwordHash: 'fixture-hash', isPasswordChangeRequired: false } });
+    const user = await source.user.create({ data: { name: 'Recovery user', email: `${schema}@test.local`, passwordHash: hashPassword('RecoveryPassword123!'), isPasswordChangeRequired: false } });
+    const staff = await source.user.create({ data: { name: 'Recovery staff', email: `staff-${schema}@test.local`,
+      role: 'IT_STAFF', passwordHash: hashPassword('RecoveryPassword123!'), isPasswordChangeRequired: false } });
     const category = await source.category.create({ data: { name: schema } });
     const system = await source.relatedSystem.create({ data: { name: schema } });
     const ticket = await source.ticket.create({ data: { ticketNumber: schema, summary: 'Recovery fixture', description: 'Recover representative records',
-      requestedPriority: 'HIGH', requesterId: user.id, categoryId: category.id, relatedSystemId: system.id } });
+      requestedPriority: 'HIGH', status: 'RESOLVED', ownerId: staff.id, version: 3, resolvedAt: new Date(),
+      resolutionSummary: 'Restored service after recorded work', requesterId: user.id, categoryId: category.id, relatedSystemId: system.id } });
     const attachment = await source.attachment.create({ data: { ticketId: ticket.id, filename: 'fixture.pdf', originalName: 'fixture.pdf', mimeType: 'application/pdf', sizeBytes: 17 } });
     await source.publicComment.create({ data: { ticketId: ticket.id, authorId: user.id, content: 'Public fixture' } });
-    await source.internalNote.create({ data: { ticketId: ticket.id, authorId: user.id, content: 'Private fixture' } });
+    await source.internalNote.create({ data: { ticketId: ticket.id, authorId: staff.id, content: 'Private fixture' } });
+    await source.actionTaken.create({ data: { ticketId: ticket.id, assigneeId: staff.id, createdById: staff.id,
+      updatedById: staff.id, performedById: staff.id, description: 'Recovery work item', result: 'Verified service',
+      status: 'COMPLETED', completedAt: new Date(), clientRequestId: randomUUID(), requestFingerprint: suffix } });
+    await source.ticketStatusEvent.create({ data: { ticketId: ticket.id, actorId: staff.id,
+      fromStatus: 'IN_PROGRESS', toStatus: 'RESOLVED', reason: 'Restored service after recorded work' } });
+    const removed = await source.attachment.create({ data: { ticketId: ticket.id, filename: 'removed.pdf',
+      originalName: 'removed.pdf', mimeType: 'application/pdf', sizeBytes: 17, isRemoved: true,
+      removedAt: new Date(), removalReason: 'Superseded file' } });
     const originalDir = path.join(directory, 'original'); const restoredDir = path.join(directory, 'restored');
     mkdirSync(originalDir); mkdirSync(restoredDir);
     const upload = path.join(originalDir, 'fixture.pdf'); writeFileSync(upload, '%PDF-1.4 fixture\n');
+    const removedUpload = path.join(originalDir, 'removed.pdf'); writeFileSync(removedUpload, '%PDF-1.4 removed\n');
     const dump = path.join(directory, 'backup.dump');
     const pgSource = new URL(sourceUrl); pgSource.searchParams.delete('schema');
     const pgTarget = new URL(targetUrl); pgTarget.searchParams.delete('schema');
@@ -61,13 +73,17 @@ describe('MIG-02 isolated database and upload recovery', () => {
     run(bin('pg_restore'), ['--no-owner', '--no-privileges', '--dbname', pgTarget.pathname.slice(1), dump], pgEnv(pgTarget));
     const restoredUploads = path.join(restoredDir, 'uploads', 'attachments'); mkdirSync(restoredUploads, { recursive: true });
     const restoredUpload = path.join(restoredUploads, 'fixture.pdf'); copyFileSync(upload, restoredUpload);
+    const restoredRemoved = path.join(restoredUploads, 'removed.pdf'); copyFileSync(removedUpload, restoredRemoved);
     const manifest = async (client: PrismaClient) => ({
       users: await client.user.findMany({ orderBy: { id: 'asc' } }), tickets: await client.ticket.findMany({ orderBy: { id: 'asc' } }),
       attachments: await client.attachment.findMany({ orderBy: { id: 'asc' } }), comments: await client.publicComment.findMany({ orderBy: { id: 'asc' } }),
+      categories: await client.category.findMany({ orderBy: { id: 'asc' } }), systems: await client.relatedSystem.findMany({ orderBy: { id: 'asc' } }),
+      actions: await client.actionTaken.findMany({ orderBy: { id: 'asc' } }), history: await client.ticketStatusEvent.findMany({ orderBy: { id: 'asc' } }),
       notes: await client.internalNote.findMany({ orderBy: { id: 'asc' } }),
     });
     expect(await manifest(target)).toEqual(await manifest(source));
     expect(checksum(restoredUpload)).toBe(checksum(upload));
+    expect(checksum(restoredRemoved)).toBe(checksum(removedUpload));
     const port = await new Promise<number>((resolve, reject) => {
       const socket = net.createServer(); socket.once('error', reject);
       socket.listen(0, '127.0.0.1', () => { const address = socket.address();
@@ -86,13 +102,23 @@ describe('MIG-02 isolated database and upload recovery', () => {
         catch { await new Promise(resolve => setTimeout(resolve, 100)); }
       }
       if (!ready) throw Error('Restored test server did not start');
-      const authorization = `Bearer ${generateToken({ id: user.id, email: user.email, role: 'REQUESTER' })}`;
+      const login = await fetch(`${base}/api/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: user.email, password: 'RecoveryPassword123!' }) });
+      expect(login.status).toBe(200);
+      const authorization = `Bearer ${(await login.json()).token}`;
       const detail = await fetch(`${base}/api/tickets/${ticket.id}`, { headers: { authorization } });
       expect(detail.status).toBe(200);
       expect(await detail.json()).toMatchObject({ ticketNumber: schema });
       const download = await fetch(`${base}/api/attachments/${attachment.id}/download`, { headers: { authorization } });
       expect(download.status).toBe(200);
       expect(Buffer.from(await download.arrayBuffer())).toEqual(readFileSync(upload));
+      expect((await fetch(`${base}/api/attachments/${removed.id}/download`, { headers: { authorization } })).status).toBe(410);
+      const actions = await fetch(`${base}/api/tickets/${ticket.id}/actions-taken`, { headers: { authorization } });
+      expect(actions.status).toBe(200);
+      expect((await actions.json()).data[0]).toMatchObject({ description: 'Recovery work item', status: 'COMPLETED', performedBy: { id: staff.id } });
+      const history = await fetch(`${base}/api/tickets/${ticket.id}/status-history`, { headers: { authorization } });
+      expect(history.status).toBe(200);
+      expect((await history.json()).data[0]).toMatchObject({ fromStatus: 'IN_PROGRESS', toStatus: 'RESOLVED' });
     } finally {
       server.kill('SIGTERM');
       await new Promise<void>(resolve => { if (server.exitCode !== null) resolve(); else server.once('exit', () => resolve()); });

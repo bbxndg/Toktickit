@@ -283,5 +283,69 @@ describe('UI-05: Tabbed Comments, Internal Notes & Requester Resolution', () => 
       expect(screen.queryByTestId('indicate-resolved-btn')).not.toBeInTheDocument();
     });
   });
+  it.each(['server', 'network'] as const)('shows recoverable staff thread errors after %s failure and keeps drafts', async failure => {
+    localStorage.setItem('toktickit_auth_token', 'staff-token');
+    localStorage.setItem('toktickit_auth_user', JSON.stringify(staffUser));
+    let failing = true;
+    vi.spyOn(global, 'fetch').mockImplementation(async url => {
+      const endpoint = String(url);
+      if (endpoint.includes('/auth/me')) return new Response(JSON.stringify(staffUser));
+      if (endpoint.includes('/staff/members')) return new Response(JSON.stringify([staffUser]));
+      if (endpoint.endsWith('/comments') || endpoint.endsWith('/notes')) {
+        if (failing) {
+          if (failure === 'network') throw new TypeError('Connection lost');
+          return new Response('{}', { status: 500 });
+        }
+        return new Response(JSON.stringify(endpoint.endsWith('/notes') ? mockNotes : mockComments));
+      }
+      return new Response(JSON.stringify(mockTicket));
+    });
+    render(<AuthProvider><StaffTicketDetail ticketId={101} onBack={() => {}} /></AuthProvider>);
+    await screen.findByTestId('staff-ticket-detail-container');
+    expect(screen.getByRole('combobox', { name: /Ticket Owner/ })).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: /IT Priority/ })).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Status Transition' })).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('tab-comments-btn'));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Unable to load public comments');
+    expect(screen.queryByText('No public comments on this ticket yet.')).not.toBeInTheDocument();
+    fireEvent.change(screen.getByTestId('public-comment-input'), { target: { value: 'Keep comment draft' } });
+    failing = false;
+    fireEvent.click(screen.getByRole('button', { name: 'Retry public comments' }));
+    await screen.findByText(mockComments[0].content);
+    expect(screen.getByTestId('public-comment-input')).toHaveValue('Keep comment draft');
+    fireEvent.click(screen.getByTestId('tab-notes-btn'));
+    expect(screen.getByRole('alert')).toHaveTextContent('Unable to load internal notes');
+    expect(screen.queryByText('No internal notes recorded yet.')).not.toBeInTheDocument();
+    fireEvent.change(screen.getByTestId('internal-note-input'), { target: { value: 'Keep private draft' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Retry internal notes' }));
+    await screen.findByText(mockNotes[0].content);
+    expect(screen.getByTestId('internal-note-input')).toHaveValue('Keep private draft');
+  });
+
+  it.each(['server', 'network'] as const)('shows recoverable requester comments after %s failure', async failure => {
+    localStorage.setItem('toktickit_auth_token', 'requester-token');
+    localStorage.setItem('toktickit_auth_user', JSON.stringify(requesterUser));
+    let failing = true;
+    vi.spyOn(global, 'fetch').mockImplementation(async url => {
+      if (String(url).includes('/auth/me')) return new Response(JSON.stringify(requesterUser));
+      if (String(url).endsWith('/comments')) {
+        if (failing) {
+          if (failure === 'network') throw new TypeError('Connection lost');
+          return new Response('{}', { status: 500 });
+        }
+        return new Response(JSON.stringify(mockComments));
+      }
+      return new Response(JSON.stringify(mockTicket));
+    });
+    render(<AuthProvider><RequesterProvider><TicketDetail ticketId={101} onBack={() => {}} /></RequesterProvider></AuthProvider>);
+    expect(await screen.findByRole('alert')).toHaveTextContent('Unable to load public comments');
+    expect(screen.queryByText(/No messages yet/)).not.toBeInTheDocument();
+    const draft = screen.getByTestId('requester-comment-input');
+    fireEvent.change(draft, { target: { value: 'Keep requester draft' } });
+    failing = false; fireEvent.click(screen.getByRole('button', { name: 'Retry public comments' }));
+    await screen.findByText(mockComments[0].content);
+    expect(draft).toHaveValue('Keep requester draft');
+  });
+
 });
 
