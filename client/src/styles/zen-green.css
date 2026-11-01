@@ -106,6 +106,17 @@ body {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
+/* Dashboard metrics and section headings */
+.zg-dashboard-metric,
+.zg-dashboard-heading,
+.zg-dashboard-ticket-number {
+  color: var(--zg-primary);
+}
+
+.zg-dashboard-heading {
+  font-weight: 600;
+}
+
 /* Buttons */
 .btn-zg-primary {
   background-color: var(--zg-primary) !important;
