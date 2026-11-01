@@ -41,7 +41,7 @@ export const RequesterSelector: React.FC = () => {
   };
 
   useEffect(() => {
-    if (isSelectorOpen && !authUser) {
+    if (isTestEnv && isSelectorOpen && !authUser) {
       fetchRequesters();
       if (currentRequester) {
         setSelectedId(currentRequester.id);

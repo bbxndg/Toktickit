@@ -148,6 +148,7 @@ describe('Lab 3 End-to-End User Journeys (E2E)', () => {
 
     let activeTicket = {
       id: 201,
+      version: 1,
       ticketNumber: 'TKT-2026-000201',
       summary: 'Printer spooler crash on Floor 3',
       description: 'Network printer queues are stuck in error state.',
@@ -244,7 +245,8 @@ describe('Lab 3 End-to-End User Journeys (E2E)', () => {
 
     render(<App />);
 
-    // 1. Staff lands on Ticket Queue
+    // 1. Staff opens the Ticket Queue from the dashboard
+    await userEvent.click(await screen.findByTestId('nav-ticket-queue'));
     await waitFor(() => {
       expect(screen.getByTestId('staff-ticket-queue')).toBeInTheDocument();
       expect(screen.getAllByText('Printer spooler crash on Floor 3')[0]).toBeInTheDocument();
@@ -335,7 +337,8 @@ describe('Lab 3 End-to-End User Journeys (E2E)', () => {
 
     render(<App />);
 
-    // 1. Admin lands on User Management directory
+    // 1. Admin opens User Management from the dashboard
+    await userEvent.click(await screen.findByTestId('nav-user-management'));
     await waitFor(() => {
       expect(screen.getByTestId('user-management-screen')).toBeInTheDocument();
       expect(screen.getByText('admin@toktickit.local')).toBeInTheDocument();

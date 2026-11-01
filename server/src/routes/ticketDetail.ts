@@ -4,48 +4,30 @@ import path from 'path';
 import fs from 'fs';
 import multer from 'multer';
 import { uploadAttachments } from '../utils/fileUpload';
-import { verifyToken } from '../utils/auth';
+import { authenticate, enforcePasswordChange, requireRole, AuthenticatedRequest } from '../middleware/auth';
+import { ApiError, lockTicket, pathId, sendApiError } from '../utils/ticketWrites';
+import { pendingActionsWhere, workflowDetail } from '../utils/ticketWorkflow';
 
 const router = Router();
 const prisma = new PrismaClient();
+const attachmentIdFromPath = (value: unknown): number | null => {
+  if (typeof value !== 'string' || !/^[1-9]\d*$/.test(value)) return null;
+  const id = Number(value);
+  return Number.isSafeInteger(id) && id <= 2147483647 ? id : null;
+};
 
 // ---------------------------------------------------------------------------
 // GET /api/tickets/:id — Ticket Detail with all attachment metadata
 // ---------------------------------------------------------------------------
-router.get('/tickets/:id', async (req: Request, res: Response) => {
+router.get('/tickets/:id', authenticate, enforcePasswordChange, requireRole('REQUESTER'), async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const ticketId = parseInt(req.params.id as string, 10);
-    const requesterId = parseInt(req.query.requesterId as string, 10);
-
-    if (isNaN(ticketId)) {
-      return res.status(400).json({
-        error: { code: 'VALIDATION_ERROR', message: 'Invalid ticket ID.' },
-      });
-    }
-
-    let authRequesterId: number | null = null;
-    const authHeader = req.headers.authorization;
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      const payload = verifyToken(authHeader.split(' ')[1]);
-      if (payload && payload.role === 'REQUESTER') {
-        authRequesterId = payload.id;
-      }
-    }
-
-    if (!authHeader && (!req.query.requesterId || isNaN(requesterId))) {
-      return res.status(400).json({
-        error: {
-          code: 'VALIDATION_ERROR',
-          message: 'requesterId is required for ownership verification.',
-          details: [{ field: 'requesterId', message: 'Valid requesterId query parameter is mandatory.' }],
-        },
-      });
-    }
+    const ticketId = pathId(req.params.id);
 
     const ticket = await prisma.ticket.findUnique({
       where: { id: ticketId },
       include: {
         requester: { select: { id: true, name: true, email: true, department: true } },
+        _count: { select: { actionsTaken: { where: pendingActionsWhere } } },
         category: { select: { id: true, name: true } },
         relatedSystem: { select: { id: true, name: true } },
         attachments: {
@@ -70,22 +52,14 @@ router.get('/tickets/:id', async (req: Request, res: Response) => {
       });
     }
 
-    // Lab 3 Requester isolation (BR-06): Requesters can only access owned tickets; 404 to avoid leaking existence
-    if (authRequesterId !== null && ticket.requesterId !== authRequesterId) {
-      return res.status(404).json({
-        error: { code: 'NOT_FOUND', message: 'Ticket not found.' },
-      });
+    if (ticket.requesterId !== req.user!.id) {
+      return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Ticket not found.' } });
     }
 
-    // Lab 2 Legacy ownership enforcement (BR-04 without token)
-    if (authRequesterId === null && ticket.requesterId !== requesterId) {
-      return res.status(403).json({
-        error: { code: 'FORBIDDEN', message: 'You do not have permission to view this ticket.' },
-      });
-    }
-
-    res.status(200).json(ticket);
+    const { _count, ...detail } = ticket;
+    res.status(200).json({ ...detail, ...workflowDetail(ticket, _count.actionsTaken, false) });
   } catch (error) {
+    if (error instanceof ApiError) return sendApiError(res, error);
     console.error('Failed to fetch ticket detail:', error);
     res.status(500).json({
       error: { code: 'INTERNAL_ERROR', message: 'Failed to retrieve ticket details.' },
@@ -124,42 +98,18 @@ const handleSingleUpload = (req: Request, res: Response, next: any) => {
   });
 };
 
-router.post('/tickets/:id/attachments', handleSingleUpload, async (req: Request, res: Response) => {
+router.post('/tickets/:id/attachments', authenticate, enforcePasswordChange, async (req: AuthenticatedRequest, res: Response, next) => {
   try {
-    const ticketId = parseInt(req.params.id as string, 10);
-
-    let authRequesterId: number | null = null;
-    let isStaffOrAdmin = false;
-    const authHeader = req.headers.authorization;
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      const payload = verifyToken(authHeader.split(' ')[1]);
-      if (payload) {
-        if (payload.role === 'REQUESTER') {
-          authRequesterId = payload.id;
-        } else if (payload.role === 'IT_STAFF' || payload.role === 'ADMIN') {
-          isStaffOrAdmin = true;
-          authRequesterId = payload.id;
-        }
-      }
-    }
-
-    const requesterId = authRequesterId || parseInt(req.body.requesterId || (req.query.requesterId as string), 10);
-
-    if (isNaN(ticketId)) {
-      return res.status(400).json({
-        error: { code: 'VALIDATION_ERROR', message: 'Invalid ticket ID.' },
-      });
-    }
-
-    if (!requesterId || isNaN(requesterId)) {
-      return res.status(400).json({
-        error: {
-          code: 'VALIDATION_ERROR',
-          message: 'requesterId is required.',
-          details: [{ field: 'requesterId', message: 'requesterId is required.' }],
-        },
-      });
-    }
+    const id = pathId(req.params.id);
+    const ticket = await prisma.ticket.findUnique({ where: { id }, select: { requesterId: true } });
+    if (!ticket || (req.user!.role === 'REQUESTER' && ticket.requesterId !== req.user!.id))
+      return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Ticket not found.' } });
+    return next();
+  } catch (error) { return sendApiError(res, error); }
+}, handleSingleUpload, async (req: AuthenticatedRequest, res: Response) => {
+  res.on('finish', () => { if (res.statusCode >= 400 && req.file?.path) fs.unlink(req.file.path, () => {}); });
+  try {
+    const ticketId = pathId(req.params.id);
 
     if (!req.file) {
       return res.status(400).json({
@@ -171,58 +121,21 @@ router.post('/tickets/:id/attachments', handleSingleUpload, async (req: Request,
       });
     }
 
-    const ticket = await prisma.ticket.findUnique({
-      where: { id: ticketId },
-      include: {
-        _count: {
-          select: { attachments: { where: { isRemoved: false } } },
-        },
-      },
-    });
-
-    if (!ticket) {
-      return res.status(404).json({
-        error: { code: 'NOT_FOUND', message: 'Ticket not found.' },
-      });
-    }
-
-    // Ownership enforcement
-    if (!isStaffOrAdmin && ticket.requesterId !== requesterId) {
-      return res.status(403).json({
-        error: { code: 'FORBIDDEN', message: 'You do not have permission to modify this ticket.' },
-      });
-    }
-
-    // Active attachment limit enforcement (BR-06)
-    if (ticket._count.attachments >= 5) {
-      return res.status(400).json({
-        error: {
-          code: 'VALIDATION_ERROR',
-          message: 'This ticket has reached the maximum of 5 active attachments.',
-          details: [{ field: 'file', message: 'Maximum 5 active attachments per ticket allowed.' }],
-        },
-      });
-    }
-
     const file = req.file;
-
-    // Create attachment and bump parent Ticket updatedAt timestamp in transaction
-    const [attachment] = await prisma.$transaction([
-      prisma.attachment.create({
-        data: {
-          ticketId,
-          filename: file.filename,
-          originalName: file.originalname,
-          mimeType: file.mimetype,
-          sizeBytes: file.size,
-          isRemoved: false,
-        },
-      }),
-      prisma.ticket.update({
-        where: { id: ticketId },
-        data: { updatedAt: new Date() },
-      }),
-    ]);
+    const attachment = await prisma.$transaction(async tx => {
+      const ticket = await lockTicket(tx, ticketId);
+      if (req.user!.role === 'REQUESTER' && ticket.requesterId !== req.user!.id) {
+        throw new ApiError(404, 'NOT_FOUND', 'Ticket not found.');
+      }
+      const count = await tx.attachment.count({ where: { ticketId, isRemoved: false } });
+      if (count >= 5) throw new ApiError(400, 'VALIDATION_ERROR',
+        'This ticket has reached the maximum of 5 active attachments.',
+        [{ field: 'file', message: 'Maximum 5 active attachments per ticket allowed.' }]);
+      const created = await tx.attachment.create({ data: { ticketId, filename: file.filename,
+        originalName: file.originalname, mimeType: file.mimetype, sizeBytes: file.size, isRemoved: false } });
+      await tx.ticket.update({ where: { id: ticketId }, data: { updatedAt: new Date() } });
+      return created;
+    });
 
     res.status(201).json({
       id: attachment.id,
@@ -234,6 +147,7 @@ router.post('/tickets/:id/attachments', handleSingleUpload, async (req: Request,
       createdAt: attachment.createdAt,
     });
   } catch (error) {
+    if (error instanceof ApiError) return sendApiError(res, error);
     console.error('Failed to add attachment:', error);
     res.status(500).json({
       error: { code: 'INTERNAL_ERROR', message: 'Failed to add attachment.' },
@@ -244,31 +158,14 @@ router.post('/tickets/:id/attachments', handleSingleUpload, async (req: Request,
 // ---------------------------------------------------------------------------
 // GET /api/attachments/:id/download — Download active attachment binary
 // ---------------------------------------------------------------------------
-router.get('/attachments/:id/download', async (req: Request, res: Response) => {
+router.get('/attachments/:id/download', authenticate, enforcePasswordChange, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const attachmentId = parseInt(req.params.id as string, 10);
+    const attachmentId = attachmentIdFromPath(req.params.id);
 
-    let authRequesterId: number | null = null;
-    let isStaffOrAdmin = false;
-    const token =
-      (req.headers.authorization?.startsWith('Bearer ')
-        ? req.headers.authorization.split(' ')[1]
-        : null) || (req.query.token as string);
+    const requesterId = req.user!.id;
+    const isStaffOrAdmin = req.user!.role !== 'REQUESTER';
 
-    if (token) {
-      const payload = verifyToken(token);
-      if (payload) {
-        if (payload.role === 'REQUESTER') {
-          authRequesterId = payload.id;
-        } else if (payload.role === 'IT_STAFF' || payload.role === 'ADMIN') {
-          isStaffOrAdmin = true;
-        }
-      }
-    }
-
-    const requesterId = authRequesterId || parseInt(req.query.requesterId as string, 10);
-
-    if (isNaN(attachmentId)) {
+    if (attachmentId === null) {
       return res.status(400).json({
         error: { code: 'VALIDATION_ERROR', message: 'Invalid attachment ID.' },
       });
@@ -299,9 +196,7 @@ router.get('/attachments/:id/download', async (req: Request, res: Response) => {
       }
 
       if (attachment.ticket.requesterId !== requesterId) {
-        return res.status(403).json({
-          error: { code: 'FORBIDDEN', message: 'You do not have permission to download this file.' },
-        });
+        return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Attachment not found.' } });
       }
     }
 
@@ -341,33 +236,16 @@ router.get('/attachments/:id/download', async (req: Request, res: Response) => {
 // ---------------------------------------------------------------------------
 // PATCH/DELETE /api/attachments/:id/remove — Soft-remove attachment
 // ---------------------------------------------------------------------------
-const handleRemoveAttachment = async (req: Request, res: Response) => {
+const handleRemoveAttachment = async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const attachmentId = parseInt(req.params.id as string, 10);
-    const { requesterId, reason, removalReason } = req.body || {};
+    const attachmentId = attachmentIdFromPath(req.params.id);
+    const { reason, removalReason } = req.body || {};
     const effectiveReason = removalReason || reason;
 
-    let authRequesterId: number | null = null;
-    let isStaffOrAdmin = false;
-    const token =
-      (req.headers.authorization?.startsWith('Bearer ')
-        ? req.headers.authorization.split(' ')[1]
-        : null) || (req.query.token as string);
+    const parsedRequesterId = req.user!.id;
+    const isStaffOrAdmin = req.user!.role !== 'REQUESTER';
 
-    if (token) {
-      const payload = verifyToken(token);
-      if (payload) {
-        if (payload.role === 'REQUESTER') {
-          authRequesterId = payload.id;
-        } else if (payload.role === 'IT_STAFF' || payload.role === 'ADMIN') {
-          isStaffOrAdmin = true;
-        }
-      }
-    }
-
-    const parsedRequesterId = authRequesterId || parseInt(requesterId || (req.query.requesterId as string), 10);
-
-    if (isNaN(attachmentId)) {
+    if (attachmentId === null) {
       return res.status(400).json({
         error: { code: 'VALIDATION_ERROR', message: 'Invalid attachment ID.' },
       });
@@ -409,9 +287,7 @@ const handleRemoveAttachment = async (req: Request, res: Response) => {
 
     // Ownership check (BR-04)
     if (!isStaffOrAdmin && attachment.ticket.requesterId !== parsedRequesterId) {
-      return res.status(403).json({
-        error: { code: 'FORBIDDEN', message: 'You do not have permission to remove this attachment.' },
-      });
+      return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Attachment not found.' } });
     }
 
     // Already removed check
@@ -453,9 +329,9 @@ const handleRemoveAttachment = async (req: Request, res: Response) => {
   }
 };
 
-router.patch('/attachments/:id/remove', handleRemoveAttachment);
-router.patch('/attachments/:id', handleRemoveAttachment);
-router.delete('/attachments/:id/remove', handleRemoveAttachment);
-router.delete('/attachments/:id', handleRemoveAttachment);
+router.patch('/attachments/:id/remove', authenticate, enforcePasswordChange, handleRemoveAttachment);
+router.patch('/attachments/:id', authenticate, enforcePasswordChange, handleRemoveAttachment);
+router.delete('/attachments/:id/remove', authenticate, enforcePasswordChange, handleRemoveAttachment);
+router.delete('/attachments/:id', authenticate, enforcePasswordChange, handleRemoveAttachment);
 
 export default router;

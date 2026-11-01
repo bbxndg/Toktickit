@@ -272,10 +272,12 @@ describe('Lab 3: Comments, Notes & Requester Resolution APIs (API-08, API-16, AP
     it('should allow ticket owner to indicate resolved when ticket is IN_PROGRESS (BR-11)', async () => {
       const res = await request(app)
         .patch(`/api/tickets/${testTicket.id}/indicate-resolved`)
-        .set('Authorization', `Bearer ${requesterToken}`);
+        .set('Authorization', `Bearer ${requesterToken}`)
+        .send({ version: (await prisma.ticket.findUniqueOrThrow({ where: { id: testTicket.id } })).version });
 
       expect(res.status).toBe(200);
-      expect(res.body.status).toBe('RESOLVED');
+      expect(res.body.status).toBe('IN_PROGRESS');
+      expect(res.body.requesterResolvedAt).toBeTruthy();
       expect(res.body.requesterResolvedIndication).toBe(true);
     });
 
@@ -283,7 +285,8 @@ describe('Lab 3: Comments, Notes & Requester Resolution APIs (API-08, API-16, AP
       // otherTicket is in NEW status
       const res = await request(app)
         .patch(`/api/tickets/${otherTicket.id}/indicate-resolved`)
-        .set('Authorization', `Bearer ${otherRequesterToken}`);
+        .set('Authorization', `Bearer ${otherRequesterToken}`)
+        .send({ version: (await prisma.ticket.findUniqueOrThrow({ where: { id: otherTicket.id } })).version });
 
       expect(res.status).toBe(422);
       expect(res.body.error.code).toBe('INVALID_STATUS_TRANSITION');
@@ -292,7 +295,8 @@ describe('Lab 3: Comments, Notes & Requester Resolution APIs (API-08, API-16, AP
     it('should return 404 Not Found when non-owner attempts to indicate resolved (BR-06)', async () => {
       const res = await request(app)
         .patch(`/api/tickets/${otherTicket.id}/indicate-resolved`)
-        .set('Authorization', `Bearer ${requesterToken}`);
+        .set('Authorization', `Bearer ${requesterToken}`)
+        .send({ version: (await prisma.ticket.findUniqueOrThrow({ where: { id: otherTicket.id } })).version });
 
       expect(res.status).toBe(404);
       expect(res.body.error.code).toBe('NOT_FOUND');

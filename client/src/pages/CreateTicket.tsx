@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useRequester } from '../context/RequesterContext';
+import { useAuth } from '../context/AuthContext';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
 
@@ -24,6 +25,7 @@ interface ValidationErrors {
 
 export const CreateTicket: React.FC<CreateTicketProps> = ({ onCancel, onSuccess }) => {
   const { currentRequester, openSelector } = useRequester();
+  const { token } = useAuth();
 
   // Reference data state
   const [categories, setCategories] = useState<OptionItem[]>([]);
@@ -197,6 +199,7 @@ export const CreateTicket: React.FC<CreateTicketProps> = ({ onCancel, onSuccess 
 
       const res = await fetch(`${API_BASE}/api/tickets`, {
         method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: formData,
       });
 
@@ -301,8 +304,9 @@ export const CreateTicket: React.FC<CreateTicketProps> = ({ onCancel, onSuccess 
           {/* Header Metadata Section (Read-Only) */}
           <div className="row g-3 mb-4 p-3 rounded" style={{ backgroundColor: 'var(--zg-bg)' }}>
             <div className="col-12 col-md-4">
-              <label className="zg-label">Ticket Number</label>
+              <label htmlFor="ticket-number" className="zg-label">Ticket Number</label>
               <input
+                id="ticket-number"
                 type="text"
                 className="form-control zg-input zg-readonly-field"
                 value="[Generated after submission]"
@@ -311,8 +315,9 @@ export const CreateTicket: React.FC<CreateTicketProps> = ({ onCancel, onSuccess 
               />
             </div>
             <div className="col-12 col-md-4">
-              <label className="zg-label">Ticket Date</label>
+              <label htmlFor="ticket-date" className="zg-label">Ticket Date</label>
               <input
+                id="ticket-date"
                 type="text"
                 className="form-control zg-input zg-readonly-field"
                 value={formattedCurrentDate}
@@ -321,9 +326,10 @@ export const CreateTicket: React.FC<CreateTicketProps> = ({ onCancel, onSuccess 
               />
             </div>
             <div className="col-12 col-md-4">
-              <label className="zg-label">Requester</label>
+              <label htmlFor="ticket-requester" className="zg-label">Requester</label>
               <div className="input-group">
                 <input
+                id="ticket-requester"
                   type="text"
                   className="form-control zg-input zg-readonly-field"
                   value={currentRequester ? currentRequester.name : 'No user selected'}

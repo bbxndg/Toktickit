@@ -7,7 +7,10 @@
     "dev": "tsx src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "test": "vitest run"
+    "test": "node scripts/test-isolated.cjs",
+    "test:isolated": "node scripts/test-isolated.cjs",
+    "test:e2e": "node scripts/e2e-isolated.cjs",
+    "test:e2e:interrupt": "node scripts/test-e2e-interrupt.cjs"
   },
   "keywords": [],
   "author": "",

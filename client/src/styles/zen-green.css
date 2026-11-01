@@ -106,6 +106,17 @@ body {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
+/* Dashboard metrics and section headings */
+.zg-dashboard-metric,
+.zg-dashboard-heading,
+.zg-dashboard-ticket-number {
+  color: var(--zg-primary);
+}
+
+.zg-dashboard-heading {
+  font-weight: 600;
+}
+
 /* Buttons */
 .btn-zg-primary {
   background-color: var(--zg-primary) !important;
@@ -225,7 +236,7 @@ body {
 
 .badge-zg-status-inprogress {
   background-color: #FEF3C7;
-  color: #D97706;
+  color: #B45309;
   font-weight: 600;
 }
 
@@ -243,6 +254,12 @@ body {
 }
 
 @media (max-width: 767.98px) {
+  button, button.btn, select.form-select {
+    min-height: 44px;
+  }
+  button {
+    min-width: 44px;
+  }
   .zg-navbar {
     padding: 0.75rem 1rem !important;
     padding: 0.75rem 0.75rem !important;
@@ -272,3 +289,8 @@ body {
 }
 
 
+
+.zg-card[role="button"]:focus-visible {
+  outline: 2px solid var(--zg-secondary);
+  outline-offset: 2px;
+}

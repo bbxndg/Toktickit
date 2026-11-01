@@ -1,22 +1,31 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import request from 'supertest';
 import app from '../../src/index';
+import { beforeAll as setupFixtures, afterAll } from 'vitest';
+import { requesterFixtures } from './fixtures';
+
+let fixtures: Awaited<ReturnType<typeof requesterFixtures>>;
+setupFixtures(async () => { fixtures = await requesterFixtures(); });
+afterAll(async () => { await fixtures?.cleanup(); });
 
 describe('Ticket Detail & Attachment Lifecycle API', () => {
   let ticketId: number;
   let attachmentId: number;
 
-  const REQUESTER_1_ID = 1;
-  const REQUESTER_2_ID = 2;
+  let REQUESTER_1_ID: number;
+  let REQUESTER_2_ID: number;
 
   // Seed one ticket with an attachment for testing
   beforeAll(async () => {
+    REQUESTER_1_ID = fixtures.users[0].id; REQUESTER_2_ID = fixtures.users[1].id;
     // Create a ticket for requester 1
     const ticketRes = await request(app)
       .post('/api/tickets')
-      .field('requesterId', REQUESTER_1_ID)
-      .field('categoryId', 2)
-      .field('relatedSystemId', 1)
+      .set('Authorization', `Bearer ${fixtures.tokens[0]}`)
+      .set('Authorization', `Bearer ${fixtures.tokens[0]}`)
+        .field('requesterId', REQUESTER_1_ID)
+      .field('categoryId', fixtures.categories[1].id)
+      .field('relatedSystemId', fixtures.systems[0].id)
       .field('requestedPriority', 'MEDIUM')
       .field('summary', 'Screen flickers after sleep')
       .field('description', 'Laptop screen flickers every time it wakes from sleep mode.');
@@ -32,7 +41,7 @@ describe('Ticket Detail & Attachment Lifecycle API', () => {
   describe('GET /api/tickets/:id', () => {
     it('returns full ticket detail including attachments for the owner', async () => {
       const res = await request(app)
-        .get(`/api/tickets/${ticketId}?requesterId=${REQUESTER_1_ID}`);
+        .get(`/api/tickets/${ticketId}?requesterId=${REQUESTER_1_ID}`).set('Authorization', `Bearer ${fixtures.tokens[0]}`);
 
       expect(res.status).toBe(200);
       expect(res.body.id).toBe(ticketId);
@@ -45,25 +54,25 @@ describe('Ticket Detail & Attachment Lifecycle API', () => {
       expect(res.body).toHaveProperty('relatedSystem');
     });
 
-    it('returns 403 Forbidden when requesterId is not the ticket owner', async () => {
+    it('returns 404 when authenticated requester is not the ticket owner', async () => {
       const res = await request(app)
-        .get(`/api/tickets/${ticketId}?requesterId=${REQUESTER_2_ID}`);
-
-      expect(res.status).toBe(403);
-      expect(res.body.error.code).toBe('FORBIDDEN');
-    });
-
-    it('returns 404 Not Found for a non-existent ticket', async () => {
-      const res = await request(app)
-        .get(`/api/tickets/999999?requesterId=${REQUESTER_1_ID}`);
+        .get(`/api/tickets/${ticketId}?requesterId=${REQUESTER_2_ID}`).set('Authorization', `Bearer ${fixtures.tokens[1]}`);
 
       expect(res.status).toBe(404);
       expect(res.body.error.code).toBe('NOT_FOUND');
     });
 
-    it('returns 400 when requesterId is missing', async () => {
+    it('returns 404 Not Found for a non-existent ticket', async () => {
+      const res = await request(app)
+        .get(`/api/tickets/999999?requesterId=${REQUESTER_1_ID}`).set('Authorization', `Bearer ${fixtures.tokens[0]}`);
+
+      expect(res.status).toBe(404);
+      expect(res.body.error.code).toBe('NOT_FOUND');
+    });
+
+    it('returns 401 when authentication is missing', async () => {
       const res = await request(app).get(`/api/tickets/${ticketId}`);
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(401);
     });
   });
 
@@ -77,6 +86,7 @@ describe('Ticket Detail & Attachment Lifecycle API', () => {
 
       const res = await request(app)
         .post(`/api/tickets/${ticketId}/attachments`)
+        .set('Authorization', `Bearer ${fixtures.tokens[0]}`)
         .field('requesterId', REQUESTER_1_ID)
         .attach('file', pdfContent, {
           filename: 'screenshot.pdf',
@@ -90,23 +100,25 @@ describe('Ticket Detail & Attachment Lifecycle API', () => {
       attachmentId = res.body.id;
     });
 
-    it('returns 403 Forbidden when non-owner tries to add attachment', async () => {
+    it('returns 404 when non-owner tries to add attachment', async () => {
       const pdfContent = Buffer.from('%PDF-1.4 test');
 
       const res = await request(app)
         .post(`/api/tickets/${ticketId}/attachments`)
+        .set('Authorization', `Bearer ${fixtures.tokens[1]}`)
         .field('requesterId', REQUESTER_2_ID)
         .attach('file', pdfContent, {
           filename: 'intruder.pdf',
           contentType: 'application/pdf',
         });
 
-      expect(res.status).toBe(403);
+      expect(res.status).toBe(404);
     });
 
     it('returns 400 when no file is provided', async () => {
       const res = await request(app)
         .post(`/api/tickets/${ticketId}/attachments`)
+        .set('Authorization', `Bearer ${fixtures.tokens[0]}`)
         .field('requesterId', REQUESTER_1_ID);
 
       expect(res.status).toBe(400);
@@ -121,23 +133,26 @@ describe('Ticket Detail & Attachment Lifecycle API', () => {
     it('returns 400 when removalReason is missing or too short', async () => {
       const res = await request(app)
         .patch(`/api/attachments/${attachmentId}/remove`)
+        .set('Authorization', `Bearer ${fixtures.tokens[0]}`)
         .send({ requesterId: REQUESTER_1_ID, removalReason: 'ab' });
 
       expect(res.status).toBe(400);
       expect(res.body.error.code).toBe('VALIDATION_ERROR');
     });
 
-    it('returns 403 Forbidden when non-owner tries to remove', async () => {
+    it('returns 404 when non-owner tries to remove', async () => {
       const res = await request(app)
         .patch(`/api/attachments/${attachmentId}/remove`)
+        .set('Authorization', `Bearer ${fixtures.tokens[1]}`)
         .send({ requesterId: REQUESTER_2_ID, removalReason: 'Wrong file uploaded.' });
 
-      expect(res.status).toBe(403);
+      expect(res.status).toBe(404);
     });
 
     it('API-07: soft-removes an attachment with a reason, preserving metadata', async () => {
       const res = await request(app)
         .patch(`/api/attachments/${attachmentId}/remove`)
+        .set('Authorization', `Bearer ${fixtures.tokens[0]}`)
         .send({ requesterId: REQUESTER_1_ID, removalReason: 'Uploaded wrong screenshot by mistake.' });
 
       expect(res.status).toBe(200);
@@ -150,6 +165,7 @@ describe('Ticket Detail & Attachment Lifecycle API', () => {
     it('returns 400 when attempting to remove an already-removed attachment', async () => {
       const res = await request(app)
         .patch(`/api/attachments/${attachmentId}/remove`)
+        .set('Authorization', `Bearer ${fixtures.tokens[0]}`)
         .send({ requesterId: REQUESTER_1_ID, removalReason: 'Duplicate removal attempt.' });
 
       expect(res.status).toBe(400);
@@ -163,17 +179,17 @@ describe('Ticket Detail & Attachment Lifecycle API', () => {
   describe('GET /api/attachments/:id/download', () => {
     it('API-08: returns 410 Gone when attempting to download a soft-removed attachment', async () => {
       const res = await request(app)
-        .get(`/api/attachments/${attachmentId}/download?requesterId=${REQUESTER_1_ID}`);
+        .get(`/api/attachments/${attachmentId}/download?requesterId=${REQUESTER_1_ID}`).set('Authorization', `Bearer ${fixtures.tokens[0]}`);
 
       expect(res.status).toBe(410);
       expect(res.body.error.code).toBe('GONE');
     });
 
-    it('returns 403 Forbidden when non-owner tries to download', async () => {
+    it('returns 404 when non-owner tries to download', async () => {
       const res = await request(app)
-        .get(`/api/attachments/${attachmentId}/download?requesterId=${REQUESTER_2_ID}`);
+        .get(`/api/attachments/${attachmentId}/download?requesterId=${REQUESTER_2_ID}`).set('Authorization', `Bearer ${fixtures.tokens[1]}`);
 
-      expect(res.status).toBe(403);
+      expect(res.status).toBe(404);
     });
   });
 });
