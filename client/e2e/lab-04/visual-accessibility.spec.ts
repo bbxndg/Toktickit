@@ -1,4 +1,8 @@
-import { test, expect, type Page, type TestInfo } from '@playwright/test';
+import { assertNamedControls, chromium, test, expect, type Page, type TestInfo } from './browser-fixtures';
+
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 const viewports = [
   { width: 1280, height: 800 }, { width: 820, height: 1180 },
@@ -13,10 +17,19 @@ async function login(page: Page, role: 'REQUESTER' | 'IT_STAFF' | 'ADMINISTRATOR
   await page.getByRole('button', { name: 'Sign In' }).click();
   await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible();
 }
-async function inspect(page: Page, info: TestInfo, name: string) {
+async function inspect(page: Page, info: TestInfo, name: string, nativeZoom = false) {
+  await assertNamedControls(page);
   const sizes = await page.evaluate(() => ({ width: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));
   expect(sizes.scroll, `${name} has page-level horizontal overflow`).toBeLessThanOrEqual(sizes.width + 1);
-  await page.screenshot({ path: info.outputPath(`${name}.png`), fullPage: true });
+  if (nativeZoom) {
+    // Full-page emulation can change the viewport at native zoom. Capture the
+    // browser's actual viewport without changing its device metrics instead.
+    const session = await page.context().newCDPSession(page);
+    try {
+      const { data } = await session.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+      writeFileSync(info.outputPath(`${name}.png`), Buffer.from(data, 'base64'));
+    } finally { await session.detach(); }
+  } else await page.screenshot({ path: info.outputPath(`${name}.png`), fullPage: true });
 }
 for (const viewport of viewports) {
   test(`staff screens at ${viewport.width}px`, async ({ page }, info) => {
@@ -71,18 +84,60 @@ test('administrator user management at mobile width', async ({ page }, info) => 
 });
 
 for (const role of ['REQUESTER', 'IT_STAFF'] as const) {
-  test(`${role} dashboard and actions with 200% CSS zoom`, async ({ page }, info) => {
-    await page.setViewportSize({ width: 1280, height: 800 }); await login(page, role);
-    await page.evaluate(() => { document.documentElement.style.zoom = '200%'; });
-    expect(await page.evaluate(() => getComputedStyle(document.documentElement).zoom)).toBe('2');
-    await inspect(page, info, 'zoomed-dashboard');
-    await page.getByRole('button', { name: `Open ${process.env.E2E_TICKET_NUMBER}`, exact: true }).click();
-    await page.getByRole('button', { name: 'Actions Taken', exact: true }).click();
-    await inspect(page, info, 'zoomed-actions');
-    if (role === 'IT_STAFF') {
-      await page.getByRole('button', { name: 'Add Action' }).click();
-      await expect(page.getByRole('button', { name: 'Save Action' })).toBeVisible();
-      await inspect(page, info, 'zoomed-dialog');
+  test(`${role} dashboard and actions with native 200% browser zoom`, async ({ browserName }, info) => {
+    expect(browserName).toBe('chromium');
+    // Browser settings need a persistent context. Use a disposable profile so the
+    // user's zoom preferences and other tests' profiles are never changed.
+    const profile = mkdtempSync(join(tmpdir(), 'toktickit-native-zoom-'));
+    let context: Awaited<ReturnType<typeof chromium.launchPersistentContext>> | undefined;
+    try {
+      context = await chromium.launchPersistentContext(profile, {
+        ...(process.env.CHROME_EXECUTABLE_PATH ? { executablePath: process.env.CHROME_EXECUTABLE_PATH } : {}),
+        headless: true, viewport: null, baseURL: 'http://localhost:5173', args: ['--window-size=1280,800'],
+      });
+      const settings = await context.newPage();
+      await settings.goto('chrome://settings/appearance');
+      const configuredZoom = await settings.evaluate(async () => {
+        const api = (window as unknown as { chrome: { settingsPrivate: {
+          setDefaultZoom: (zoom: number) => Promise<void>; getDefaultZoom: () => Promise<number>;
+        } } }).chrome.settingsPrivate;
+        await api.setDefaultZoom(2);
+        return api.getDefaultZoom();
+      });
+      expect(configuredZoom).toBe(2);
+      await settings.close();
+      const page = await context.newPage();
+      const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
+      await login(page, role);
+      await expect(page.getByRole('heading', { name: 'Recent Tickets' })).toBeVisible();
+      const geometry = await page.evaluate(() => ({ inner: innerWidth,
+        dpr: devicePixelRatio, cssZoom: getComputedStyle(document.documentElement).zoom }));
+      expect(geometry.cssZoom).toBe('1');
+      expect(geometry.dpr).toBe(2);
+      // Browser window bounds remain authoritative when a privacy browser
+      // rounds DOM outerWidth. Verify the physical/CSS ratio independently.
+      const windowSession = await context.newCDPSession(page);
+      const { bounds } = await windowSession.send('Browser.getWindowForTarget');
+      await windowSession.detach();
+      expect(bounds.width).toBe(1280);
+      expect(bounds.width! / geometry.inner).toBeCloseTo(2, 1);
+      await inspect(page, info, 'native-zoom-dashboard', true);
+      await page.getByRole('button', { name: `Open ${process.env.E2E_TICKET_NUMBER}`, exact: true }).click();
+      await page.getByRole('button', { name: 'Actions Taken', exact: true }).click();
+      await expect(page.getByText('No actions recorded.')).toBeVisible();
+      await inspect(page, info, 'native-zoom-actions', true);
+      if (role === 'IT_STAFF') {
+        await page.getByRole('button', { name: 'Add Action' }).click();
+        const save = page.getByRole('button', { name: 'Save Action' });
+        await save.scrollIntoViewIfNeeded();
+        await expect(save).toBeInViewport({ ratio: 1 });
+        expect(await page.getByRole('dialog').evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+        await inspect(page, info, 'native-zoom-dialog', true);
+      }
+      expect(errors).toEqual([]);
+    } finally {
+      await context?.close();
+      rmSync(profile, { recursive: true, force: true });
     }
   });
 }

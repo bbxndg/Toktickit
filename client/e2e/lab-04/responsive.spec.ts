@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './browser-fixtures';
 
 async function contrast(page: import('@playwright/test').Page, selector: string) {
   return page.locator(selector).evaluate(element => {

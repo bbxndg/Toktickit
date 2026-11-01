@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './browser-fixtures';
 
 for (const role of ['REQUESTER', 'IT_STAFF', 'ADMINISTRATOR'] as const) {
   test(`${role} can sign in and use its dashboard`, async ({ page }) => {

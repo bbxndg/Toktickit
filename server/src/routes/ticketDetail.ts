@@ -5,6 +5,7 @@ import fs from 'fs';
 import multer from 'multer';
 import { uploadAttachments } from '../utils/fileUpload';
 import { authenticate, enforcePasswordChange, requireRole, AuthenticatedRequest } from '../middleware/auth';
+import { ApiError, lockTicket, pathId, sendApiError } from '../utils/ticketWrites';
 import { pendingActionsWhere, workflowDetail } from '../utils/ticketWorkflow';
 
 const router = Router();
@@ -20,13 +21,7 @@ const attachmentIdFromPath = (value: unknown): number | null => {
 // ---------------------------------------------------------------------------
 router.get('/tickets/:id', authenticate, enforcePasswordChange, requireRole('REQUESTER'), async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const ticketId = parseInt(req.params.id as string, 10);
-
-    if (isNaN(ticketId)) {
-      return res.status(400).json({
-        error: { code: 'VALIDATION_ERROR', message: 'Invalid ticket ID.' },
-      });
-    }
+    const ticketId = pathId(req.params.id);
 
     const ticket = await prisma.ticket.findUnique({
       where: { id: ticketId },
@@ -64,6 +59,7 @@ router.get('/tickets/:id', authenticate, enforcePasswordChange, requireRole('REQ
     const { _count, ...detail } = ticket;
     res.status(200).json({ ...detail, ...workflowDetail(ticket, _count.actionsTaken, false) });
   } catch (error) {
+    if (error instanceof ApiError) return sendApiError(res, error);
     console.error('Failed to fetch ticket detail:', error);
     res.status(500).json({
       error: { code: 'INTERNAL_ERROR', message: 'Failed to retrieve ticket details.' },
@@ -103,37 +99,17 @@ const handleSingleUpload = (req: Request, res: Response, next: any) => {
 };
 
 router.post('/tickets/:id/attachments', authenticate, enforcePasswordChange, async (req: AuthenticatedRequest, res: Response, next) => {
-  const id = Number(req.params.id);
-  if (!Number.isSafeInteger(id) || id < 1) return res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Invalid ticket ID.' } });
   try {
+    const id = pathId(req.params.id);
     const ticket = await prisma.ticket.findUnique({ where: { id }, select: { requesterId: true } });
     if (!ticket || (req.user!.role === 'REQUESTER' && ticket.requesterId !== req.user!.id))
       return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Ticket not found.' } });
     return next();
-  } catch { return res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Unable to verify ticket.' } }); }
+  } catch (error) { return sendApiError(res, error); }
 }, handleSingleUpload, async (req: AuthenticatedRequest, res: Response) => {
   res.on('finish', () => { if (res.statusCode >= 400 && req.file?.path) fs.unlink(req.file.path, () => {}); });
   try {
-    const ticketId = parseInt(req.params.id as string, 10);
-
-    const requesterId = req.user!.id;
-    const isStaffOrAdmin = req.user!.role !== 'REQUESTER';
-
-    if (isNaN(ticketId)) {
-      return res.status(400).json({
-        error: { code: 'VALIDATION_ERROR', message: 'Invalid ticket ID.' },
-      });
-    }
-
-    if (!requesterId || isNaN(requesterId)) {
-      return res.status(400).json({
-        error: {
-          code: 'VALIDATION_ERROR',
-          message: 'requesterId is required.',
-          details: [{ field: 'requesterId', message: 'requesterId is required.' }],
-        },
-      });
-    }
+    const ticketId = pathId(req.params.id);
 
     if (!req.file) {
       return res.status(400).json({
@@ -145,58 +121,21 @@ router.post('/tickets/:id/attachments', authenticate, enforcePasswordChange, asy
       });
     }
 
-    const ticket = await prisma.ticket.findUnique({
-      where: { id: ticketId },
-      include: {
-        _count: {
-          select: { attachments: { where: { isRemoved: false } } },
-        },
-      },
-    });
-
-    if (!ticket) {
-      return res.status(404).json({
-        error: { code: 'NOT_FOUND', message: 'Ticket not found.' },
-      });
-    }
-
-    // Ownership enforcement
-    if (!isStaffOrAdmin && ticket.requesterId !== requesterId) {
-      return res.status(403).json({
-        error: { code: 'FORBIDDEN', message: 'You do not have permission to modify this ticket.' },
-      });
-    }
-
-    // Active attachment limit enforcement (BR-06)
-    if (ticket._count.attachments >= 5) {
-      return res.status(400).json({
-        error: {
-          code: 'VALIDATION_ERROR',
-          message: 'This ticket has reached the maximum of 5 active attachments.',
-          details: [{ field: 'file', message: 'Maximum 5 active attachments per ticket allowed.' }],
-        },
-      });
-    }
-
     const file = req.file;
-
-    // Create attachment and bump parent Ticket updatedAt timestamp in transaction
-    const [attachment] = await prisma.$transaction([
-      prisma.attachment.create({
-        data: {
-          ticketId,
-          filename: file.filename,
-          originalName: file.originalname,
-          mimeType: file.mimetype,
-          sizeBytes: file.size,
-          isRemoved: false,
-        },
-      }),
-      prisma.ticket.update({
-        where: { id: ticketId },
-        data: { updatedAt: new Date() },
-      }),
-    ]);
+    const attachment = await prisma.$transaction(async tx => {
+      const ticket = await lockTicket(tx, ticketId);
+      if (req.user!.role === 'REQUESTER' && ticket.requesterId !== req.user!.id) {
+        throw new ApiError(404, 'NOT_FOUND', 'Ticket not found.');
+      }
+      const count = await tx.attachment.count({ where: { ticketId, isRemoved: false } });
+      if (count >= 5) throw new ApiError(400, 'VALIDATION_ERROR',
+        'This ticket has reached the maximum of 5 active attachments.',
+        [{ field: 'file', message: 'Maximum 5 active attachments per ticket allowed.' }]);
+      const created = await tx.attachment.create({ data: { ticketId, filename: file.filename,
+        originalName: file.originalname, mimeType: file.mimetype, sizeBytes: file.size, isRemoved: false } });
+      await tx.ticket.update({ where: { id: ticketId }, data: { updatedAt: new Date() } });
+      return created;
+    });
 
     res.status(201).json({
       id: attachment.id,
@@ -208,6 +147,7 @@ router.post('/tickets/:id/attachments', authenticate, enforcePasswordChange, asy
       createdAt: attachment.createdAt,
     });
   } catch (error) {
+    if (error instanceof ApiError) return sendApiError(res, error);
     console.error('Failed to add attachment:', error);
     res.status(500).json({
       error: { code: 'INTERNAL_ERROR', message: 'Failed to add attachment.' },

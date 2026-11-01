@@ -314,6 +314,7 @@ export const StaffTicketQueue: React.FC<StaffTicketQueueProps> = ({ onSelectTick
                   setSearchInput(e.target.value);
                   setPage(1);
                 }}
+                aria-label="Search ticket queue"
                 data-testid="staff-queue-search"
               />
             </div>
@@ -328,7 +329,8 @@ export const StaffTicketQueue: React.FC<StaffTicketQueueProps> = ({ onSelectTick
                 setCategoryId(e.target.value);
                 setPage(1);
               }}
-              data-testid="staff-queue-category-filter"
+              aria-label="Category filter"
+                data-testid="staff-queue-category-filter"
             >
               <option value="">All Categories</option>
               {categories.map((c) => (
@@ -348,7 +350,8 @@ export const StaffTicketQueue: React.FC<StaffTicketQueueProps> = ({ onSelectTick
                 setStatus(e.target.value); setStatusGroup('');
                 setPage(1);
               }}
-              data-testid="staff-queue-status-filter"
+              aria-label="Ticket status filter"
+                data-testid="staff-queue-status-filter"
             >
               <option value="">All Statuses</option>
               <option value="NEW">New</option>
@@ -371,7 +374,8 @@ export const StaffTicketQueue: React.FC<StaffTicketQueueProps> = ({ onSelectTick
                 setItPriority(e.target.value);
                 setPage(1);
               }}
-              data-testid="staff-queue-it-priority-filter"
+              aria-label="IT priority filter"
+                data-testid="staff-queue-it-priority-filter"
               title="Filter by IT Priority"
             >
               <option value="">IT Priority</option>
@@ -391,7 +395,8 @@ export const StaffTicketQueue: React.FC<StaffTicketQueueProps> = ({ onSelectTick
                 setOwnerId(e.target.value);
                 setPage(1);
               }}
-              data-testid="staff-queue-owner-filter"
+              aria-label="Ticket owner filter"
+                data-testid="staff-queue-owner-filter"
             >
               <option value="">All Owners</option>
               <option value="unassigned">⚠️ Unassigned</option>
@@ -417,7 +422,8 @@ export const StaffTicketQueue: React.FC<StaffTicketQueueProps> = ({ onSelectTick
                 setSortOrder(so);
                 setPage(1);
               }}
-              data-testid="staff-queue-sort-filter"
+              aria-label="Sort tickets"
+                data-testid="staff-queue-sort-filter"
             >
               <option value="createdAt-desc">Newest First</option>
               <option value="createdAt-asc">Oldest First</option>
@@ -564,6 +570,8 @@ export const StaffTicketQueue: React.FC<StaffTicketQueueProps> = ({ onSelectTick
                 className="card shadow-sm border-0 p-3 mb-2"
                 style={{ cursor: 'pointer' }}
                 onClick={() => onSelectTicket(t.id)}
+                role="button" tabIndex={0} aria-label={`Open Ticket ${t.ticketNumber}`}
+                onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelectTicket(t.id); } }}
                 data-testid={`staff-queue-card-${t.id}`}
               >
                 <div className="d-flex justify-content-between align-items-center mb-1">

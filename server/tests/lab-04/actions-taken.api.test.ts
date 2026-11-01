@@ -127,6 +127,8 @@ describe('Lab 4 Actions Taken (API-01–07, API-13–14)', () => {
     const res = await create({ assigneeId: other.id });
     await prisma.user.update({ where: { id: other.id }, data: { isActive: false } });
     try {
+      const list = await request(app).get(`/api/tickets/${ticket.id}/actions-taken`).set(auth(owner));
+      expect(list.body.data.find((action: any) => action.id === res.body.data.id).assignee).toMatchObject({ id: other.id, isActive: false });
       expect((await edit(res.body.data, { status: 'COMPLETED', result: 'Done correctly' })).body.error.code).toBe('INVALID_ASSIGNEE');
       const textEdit = await edit(res.body.data, { description: 'Updated planning notes' });
       expect(textEdit.status).toBe(200);

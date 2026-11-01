@@ -14,13 +14,7 @@ const prisma = new PrismaClient();
 // GET /api/tickets/:id/comments
 router.get('/tickets/:id/comments', authenticate, enforcePasswordChange, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    const ticketId = Number(req.params.id);
-    if (isNaN(ticketId)) {
-      res.status(400).json({
-        error: { code: 'VALIDATION_ERROR', message: 'Invalid ticket ID.' },
-      });
-      return;
-    }
+    const ticketId = pathId(req.params.id);
 
     const ticket = await prisma.ticket.findUnique({
       where: { id: ticketId },
@@ -60,6 +54,7 @@ router.get('/tickets/:id/comments', authenticate, enforcePasswordChange, async (
 
     res.status(200).json(comments);
   } catch (error: any) {
+    if (error instanceof ApiError) { sendApiError(res, error); return; }
     console.error('Error fetching public comments:', error);
     res.status(500).json({
       error: { code: 'INTERNAL_ERROR', message: 'Failed to retrieve public comments.' },
@@ -70,13 +65,7 @@ router.get('/tickets/:id/comments', authenticate, enforcePasswordChange, async (
 // POST /api/tickets/:id/comments
 router.post('/tickets/:id/comments', authenticate, enforcePasswordChange, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    const ticketId = Number(req.params.id);
-    if (isNaN(ticketId)) {
-      res.status(400).json({
-        error: { code: 'VALIDATION_ERROR', message: 'Invalid ticket ID.' },
-      });
-      return;
-    }
+    const ticketId = pathId(req.params.id);
 
     const { content } = req.body;
     const trimmed = typeof content === 'string' ? content.trim() : '';
@@ -134,6 +123,7 @@ router.post('/tickets/:id/comments', authenticate, enforcePasswordChange, async 
 
     res.status(201).json(newComment);
   } catch (error: any) {
+    if (error instanceof ApiError) { sendApiError(res, error); return; }
     console.error('Error creating public comment:', error);
     res.status(500).json({
       error: { code: 'INTERNAL_ERROR', message: 'Failed to post public comment.' },
@@ -148,13 +138,7 @@ router.post('/tickets/:id/comments', authenticate, enforcePasswordChange, async 
 // GET /api/tickets/:id/notes (Restricted to IT_STAFF and ADMINISTRATOR)
 router.get('/tickets/:id/notes', authenticate, enforcePasswordChange, requireRole(['IT_STAFF', 'ADMINISTRATOR']), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    const ticketId = Number(req.params.id);
-    if (isNaN(ticketId)) {
-      res.status(400).json({
-        error: { code: 'VALIDATION_ERROR', message: 'Invalid ticket ID.' },
-      });
-      return;
-    }
+    const ticketId = pathId(req.params.id);
 
     const ticket = await prisma.ticket.findUnique({
       where: { id: ticketId },
@@ -186,6 +170,7 @@ router.get('/tickets/:id/notes', authenticate, enforcePasswordChange, requireRol
 
     res.status(200).json(notes);
   } catch (error: any) {
+    if (error instanceof ApiError) { sendApiError(res, error); return; }
     console.error('Error fetching internal notes:', error);
     res.status(500).json({
       error: { code: 'INTERNAL_ERROR', message: 'Failed to retrieve internal notes.' },
@@ -196,13 +181,7 @@ router.get('/tickets/:id/notes', authenticate, enforcePasswordChange, requireRol
 // POST /api/tickets/:id/notes (Restricted to IT_STAFF and ADMINISTRATOR)
 router.post('/tickets/:id/notes', authenticate, enforcePasswordChange, requireRole(['IT_STAFF', 'ADMINISTRATOR']), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    const ticketId = Number(req.params.id);
-    if (isNaN(ticketId)) {
-      res.status(400).json({
-        error: { code: 'VALIDATION_ERROR', message: 'Invalid ticket ID.' },
-      });
-      return;
-    }
+    const ticketId = pathId(req.params.id);
 
     const { content } = req.body;
     const trimmed = typeof content === 'string' ? content.trim() : '';
@@ -252,6 +231,7 @@ router.post('/tickets/:id/notes', authenticate, enforcePasswordChange, requireRo
 
     res.status(201).json(newNote);
   } catch (error: any) {
+    if (error instanceof ApiError) { sendApiError(res, error); return; }
     console.error('Error creating internal note:', error);
     res.status(500).json({
       error: { code: 'INTERNAL_ERROR', message: 'Failed to save internal note.' },

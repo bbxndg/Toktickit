@@ -3,7 +3,7 @@ import './actions-taken.css';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
 type Status = 'PLANNED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
-interface Person { id: number; name: string; role: string }
+interface Person { id: number; name: string; role: string; isActive?: boolean }
 export interface ActionRecord {
   id: number; ticketId: number; description: string; status: Status; result: string | null;
   assignee: Person; createdBy: Person; updatedBy: Person; performedBy: Person | null;
@@ -22,7 +22,7 @@ const label = (value: string) => value.toLowerCase().replace(/_/g, ' ').replace(
 const date = (value: string) => new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'long' }).format(new Date(value));
 
 // Restore the triggering control and keep keyboard focus inside the active dialog.
-export function ActionDialog({ title, onClose, children, testId }: { title: string; onClose: () => void; children: ReactNode; testId?: string }) {
+export function ActionDialog({ title, onClose, children, testId, dismissible = true }: { title: string; onClose: () => void; children: ReactNode; testId?: string; dismissible?: boolean }) {
   const ref = useRef<HTMLDivElement>(null); const id = useId(); const close = useRef(onClose); close.current = onClose;
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
@@ -32,9 +32,10 @@ export function ActionDialog({ title, onClose, children, testId }: { title: stri
   }, []);
   return <div className="action-dialog-backdrop"><div ref={ref} role="dialog" aria-modal="true" aria-labelledby={id}
     tabIndex={-1} data-testid={testId} className="action-dialog zg-card" onKeyDown={e => {
-      if (e.key === 'Escape') { e.preventDefault(); close.current(); }
+      if (e.key === 'Escape' && dismissible) { e.preventDefault(); close.current(); }
       if (e.key === 'Tab') {
         const controls = Array.from(ref.current!.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex="0"]'))
+          .filter(control => control.getAttribute('type') !== 'hidden' && !control.hidden && getComputedStyle(control).display !== 'none' && getComputedStyle(control).visibility !== 'hidden')
           .sort((a, b) => a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1);
         const first = controls[0], last = controls.at(-1);
         if (!first) { e.preventDefault(); ref.current?.focus(); }
@@ -42,7 +43,7 @@ export function ActionDialog({ title, onClose, children, testId }: { title: stri
         else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
       }
     }}><div className="d-flex justify-content-between align-items-start gap-3 mb-3">
-      <h3 id={id} className="h5 mb-0">{title}</h3><button type="button" className="btn btn-zg-secondary" aria-label="Close dialog" onClick={onClose}>×</button>
+      <h3 id={id} className="h5 mb-0">{title}</h3>{dismissible && <button type="button" className="btn btn-zg-secondary" aria-label="Close dialog" onClick={onClose}>×</button>}
     </div>{children}</div></div>;
 }
 
@@ -154,12 +155,23 @@ function ActionSession({ ticketId, token, currentUser, ticketStatus, ticketVersi
         if (response.status === 409) setConflict(true);
         const fields: Record<string, string> = { form: data.error?.message || 'Unable to save this action.' };
         for (const detail of data.error?.details || []) fields[detail.field] = detail.message;
-        setErrors(fields); return;
+        setErrors(fields);
+        if (response.status === 422) {
+          setConflict(true);
+          try {
+            const latest = await getPage(page);
+            if (alive.current) { setResult(latest); onTicketChange(latest.ticket); }
+          } catch {
+            if (alive.current) setErrors(current => ({ ...current, form: `${current.form} Unable to refresh. Reload the latest information before saving.` }));
+          }
+        }
+        return;
       }
       setDraft(null); setConfirming(false); setUncertain(false); setMessage(data.replayed ? 'Previous save confirmed. No duplicate action was created.' : 'Action saved successfully.');
       onTicketChange(data.ticket); await load();
     } catch {
       if (alive.current) {
+        setConfirming(false);
         if (editing) { setConflict(true); setErrors({ form: 'Save result could not be confirmed. Reload the latest record and review your draft.' }); }
         else { setUncertain(true); setErrors({ form: 'Save result could not be confirmed. Retry the previous save to check it safely.' }); }
       }
@@ -209,18 +221,18 @@ function ActionSession({ ticketId, token, currentUser, ticketStatus, ticketVersi
       {result.data.length === 0 ? <p>No actions recorded.</p> : <>
         <div className="d-none d-lg-block table-responsive"><table className="table align-middle"><caption className="visually-hidden">Recorded work, oldest first</caption>
           <thead><tr>{['Action Date/Time', 'Description', 'Assignee', 'Performed By', 'Status', 'Follow-up', 'Actions'].map(name => <th key={name} scope="col">{name}</th>)}</tr></thead>
-          <tbody>{result.data.map(row => <tr key={row.id} className={row.id === actionTarget?.id ? 'table-success' : undefined}><td>{date(row.actionAt)}{row.id === actionTarget?.id && ' (Selected)'}</td><td className="action-description">{row.description}</td><td>{row.assignee.name}</td>
+          <tbody>{result.data.map(row => <tr key={row.id} className={row.id === actionTarget?.id ? 'table-success' : undefined}><td>{date(row.actionAt)}{row.id === actionTarget?.id && ' (Selected)'}</td><td className="action-description">{row.description}</td><td>{row.assignee.name}{row.assignee.isActive === false && ' (Inactive)'}</td>
             <td>{row.performedBy?.name || 'Not completed'}</td><td>{badge(row.status)}</td><td>{row.followUpRequired ? 'Required' : 'No'}</td><td>{buttons(row)}</td></tr>)}</tbody></table></div>
         <div className="d-lg-none">{result.data.map(row => <article className={`zg-card p-3 mb-3 ${row.id === actionTarget?.id ? 'border border-success' : ''}`} key={row.id}>
           {row.id === actionTarget?.id && <strong>Selected action</strong>}
           <div className="d-flex justify-content-between gap-2 mb-2">{badge(row.status)}<small>{date(row.actionAt)}</small></div><p className="action-description">{row.description}</p>
-          <p>Assignee: {row.assignee.name}<br />Performed By: {row.performedBy?.name || 'Not completed'}<br />Follow-up: {row.followUpRequired ? 'Required' : 'No'}</p>{buttons(row)}</article>)}</div>
+          <p>Assignee: {row.assignee.name}{row.assignee.isActive === false && ' (Inactive)'}<br />Performed By: {row.performedBy?.name || 'Not completed'}<br />Follow-up: {row.followUpRequired ? 'Required' : 'No'}</p>{buttons(row)}</article>)}</div>
       </>}
       <nav className="d-flex gap-3 align-items-center flex-wrap" aria-label="Action pagination"><button type="button" className="btn btn-zg-secondary" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>Previous</button>
         <span>Page {page} of {result.pagination.totalPages} · {result.pagination.totalItems} actions</span><button type="button" className="btn btn-zg-secondary" disabled={page >= result.pagination.totalPages} onClick={() => setPage(p => p + 1)}>Next</button></nav>
     </>}
     {view && <ActionDialog title="View Action" onClose={() => setView(null)}><dl className="action-details">
-      {Object.entries({ 'Action Date/Time': date(view.actionAt), Description: view.description, Status: label(view.status), Assignee: view.assignee.name,
+      {Object.entries({ 'Action Date/Time': date(view.actionAt), Description: view.description, Status: label(view.status), Assignee: `${view.assignee.name}${view.assignee.isActive === false ? ' (Inactive)' : ''}`,
         'Performed By': view.performedBy?.name || 'Not completed', Result: view.result || 'Not recorded', 'Follow-Up Required?': view.followUpRequired ? 'Yes' : 'No',
         'Follow-up Note': view.followUpNote || 'None', 'Attachment Notes': view.attachmentNotes || 'None', 'Cancellation Reason': view.cancelReason || 'None',
         'Created By': view.createdBy.name, 'Last Edited By': view.updatedBy.name, 'Last Updated': date(view.updatedAt),
@@ -230,6 +242,7 @@ function ActionSession({ ticketId, token, currentUser, ticketStatus, ticketVersi
       <p className="alert alert-info">Actions Taken are visible to the Requester. Use Internal Notes for confidential information.</p>
       <p className="text-muted">Fields marked * are required.</p>
       {errors.form && <div className="alert alert-danger" role="alert">{errors.form}</div>}
+      {!canWrite && !uncertain && <p role="alert">This Ticket no longer accepts action changes. Your draft is retained for review.</p>}
       {statusNotice && <div className="alert alert-info" role="status">{statusNotice}</div>}
       {conflict && <button type="button" className="btn btn-zg-secondary mb-3" disabled={busy} onClick={() => void reloadLatest()}>Reload Latest</button>}
       {discarding && <div ref={discardPrompt} role="alert" tabIndex={-1} className="alert alert-warning">
@@ -259,9 +272,9 @@ function ActionSession({ ticketId, token, currentUser, ticketStatus, ticketVersi
         {textField('attachmentNotes', 'Attachment Notes')}
         {draft.status === 'CANCELLED' && textField('cancelReason', 'Cancellation Reason', true)}
         {confirming && <div className="alert alert-warning"><p>This action will become read-only. Confirm the recorded {draft.status === 'COMPLETED' ? 'result' : 'reason'} before saving.</p>
-          <button type="button" className="btn btn-zg-primary" disabled={busy} onClick={() => void save(true)}>{draft.status === 'COMPLETED' ? 'Confirm Completion' : 'Confirm Cancellation'}</button></div>}
+          <button type="button" className="btn btn-zg-primary" disabled={busy || conflict || !canWrite} onClick={() => void save(true)}>{draft.status === 'COMPLETED' ? 'Confirm Completion' : 'Confirm Cancellation'}</button></div>}
         <div className="d-flex justify-content-between gap-3"><button type="button" className="btn btn-zg-secondary" disabled={busy} onClick={close}>Cancel</button>
-          <button type="submit" className="btn btn-zg-primary" disabled={busy || conflict || membersLoading || !!membersError || confirming}>{busy ? 'Saving...' : uncertain ? 'Retry Previous Save' : editing ? 'Save Changes' : 'Save Action'}</button></div>
+          <button type="submit" className="btn btn-zg-primary" disabled={busy || conflict || (!canWrite && !uncertain) || membersLoading || !!membersError || confirming}>{busy ? 'Saving...' : uncertain ? 'Retry Previous Save' : editing ? 'Save Changes' : 'Save Action'}</button></div>
       </form>
     </ActionDialog>}
   </section>;

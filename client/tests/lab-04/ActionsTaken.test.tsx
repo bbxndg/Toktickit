@@ -45,6 +45,15 @@ describe('Lab 4 Actions Taken UI (UI-01, UI-05, UI-06)', () => {
     expect(screen.getByRole('dialog', { name: 'View Action' })).toHaveTextContent('Not completed');
     expect(screen.queryByText('Internal Notes')).not.toBeInTheDocument();
   });
+  it.each(['IT_STAFF', 'REQUESTER'] as const)('labels a historical inactive assignee in the %s list and View', async role => {
+    vi.mocked(fetch).mockResolvedValue(response({ data: [{ ...action, assignee: { ...user, name: 'Historical Staff', isActive: false } }],
+      ticket: parent, pagination: { page: 1, pageSize: 20, totalItems: 1, totalPages: 1 } }));
+    mount(role);
+    expect(await screen.findByText('Historical Staff (Inactive)', { selector: 'td' })).toBeInTheDocument();
+    expect(screen.getByText(/Assignee: Historical Staff \(Inactive\)/)).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole('button', { name: 'View' })[0]);
+    expect(screen.getByRole('dialog', { name: 'View Action' })).toHaveTextContent('Historical Staff (Inactive)');
+  });
   it('validates follow-up and completion fields before submitting', async () => {
     const actor = userEvent.setup(); mount();
     await actor.click(await screen.findByRole('button', { name: 'Add Action' }));
@@ -196,4 +205,92 @@ describe('Lab 4 Actions Taken UI (UI-01, UI-05, UI-06)', () => {
     const call = vi.mocked(fetch).mock.calls.find(([, init]) => init?.method === 'PATCH')!;
     expect(JSON.parse(call[1]!.body as string)).not.toHaveProperty('assigneeId');
   });
+  it('refreshes authoritative state after 422 while retaining the draft and blocking writes on a resolved parent', async () => {
+    let rejected = false;
+    vi.mocked(fetch).mockImplementation(async (url, init) => {
+      if (String(url).includes('/staff/members')) return response([user]);
+      if (init?.method === 'POST') { rejected = true; return response({ error: { code: 'TICKET_NOT_ACTIVE', message: 'Ticket is now resolved.' } }, 422); }
+      return response({ data: [action], ticket: { ...parent, ...(rejected ? { status: 'RESOLVED', version: 6 } : {}) }, pagination: { page: 1, totalItems: 1, totalPages: 1 } });
+    });
+    const actor = userEvent.setup(); mount();
+    await actor.click(await screen.findByRole('button', { name: 'Add Action' }));
+    await actor.type(screen.getByLabelText(/Action Description/), 'Retain this unresolved draft');
+    await actor.click(screen.getByRole('button', { name: 'Save Action' }));
+    await waitFor(() => expect(onTicketChange).toHaveBeenCalledWith(expect.objectContaining({ status: 'RESOLVED', version: 6 })));
+    expect(screen.getByLabelText(/Action Description/)).toHaveValue('Retain this unresolved draft');
+    expect(screen.getByRole('button', { name: 'Save Action' })).toBeDisabled();
+    await actor.click(screen.getByRole('button', { name: 'Reload Latest' }));
+    expect(screen.getByRole('button', { name: 'Save Action' })).toBeDisabled();
+    expect(screen.getByText(/This Ticket no longer accepts action changes/)).toBeInTheDocument();
+    expect(vi.mocked(fetch).mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(1);
+  });
+
+  it.each([400, 500])('retains a known HTTP %i failure draft and permits a safe reviewed retry', async status => {
+    const original = vi.mocked(fetch).getMockImplementation()!; let fail = true;
+    vi.mocked(fetch).mockImplementation(async (url, init) => {
+      if (init?.method === 'POST' && fail) return response({ error: { code: status === 400 ? 'VALIDATION_ERROR' : 'INTERNAL_ERROR', message: 'Synthetic save failure',
+        ...(status === 400 ? { details: [{ field: 'description', message: 'Review the description' }] } : {}) } }, status);
+      return original(url, init);
+    });
+    const actor = userEvent.setup(); mount();
+    await actor.click(await screen.findByRole('button', { name: 'Add Action' }));
+    await actor.type(screen.getByLabelText(/Action Description/), 'Keep this draft after a known failure');
+    await actor.click(screen.getByRole('button', { name: 'Save Action' }));
+    expect(await screen.findByText('Synthetic save failure')).toBeInTheDocument();
+    expect(screen.getByLabelText(/Action Description/)).toHaveValue('Keep this draft after a known failure');
+    if (status === 400) expect(screen.getByLabelText(/Action Description/)).toHaveAttribute('aria-invalid', 'true');
+    fail = false; await actor.click(screen.getByRole('button', { name: 'Save Action' }));
+    await waitFor(() => expect(onTicketChange).toHaveBeenCalled());
+  });
+
+  it.each(['empty', 'failure'] as const)('disables save for %s assignees and preserves the draft across retry', async mode => {
+    const original = vi.mocked(fetch).getMockImplementation()!; let recover = false;
+    vi.mocked(fetch).mockImplementation(async (url, init) => {
+      if (String(url).includes('/staff/members') && !recover) return mode === 'empty' ? response([]) : response({ error: { message: 'Assignee fetch failed' } }, 500);
+      return original(url, init);
+    });
+    const actor = userEvent.setup(); mount();
+    await actor.click(await screen.findByRole('button', { name: 'Add Action' }));
+    await actor.type(screen.getByLabelText(/Action Description/), 'Draft awaiting eligible staff');
+    expect(screen.getByRole('button', { name: 'Save Action' })).toBeDisabled();
+    recover = true; await actor.click(screen.getByRole('button', { name: 'Retry Assignees' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Save Action' })).toBeEnabled());
+    expect(screen.getByLabelText(/Action Description/)).toHaveValue('Draft awaiting eligible staff');
+  });
+
+  it('sends only one create when submit is activated repeatedly before the response arrives', async () => {
+    const original = vi.mocked(fetch).getMockImplementation()!;
+    let release!: (value: Response) => void;
+    vi.mocked(fetch).mockImplementation(async (url, init) => init?.method === 'POST' ? new Promise<Response>(resolve => { release = resolve; }) : original(url, init));
+    mount(); fireEvent.click(await screen.findByRole('button', { name: 'Add Action' }));
+    const description = screen.getByLabelText(/Action Description/);
+    fireEvent.change(description, { target: { value: 'One intended work item' } });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Save Action' })).toBeEnabled());
+    const form = description.closest('form')!;
+    fireEvent.submit(form); fireEvent.submit(form); fireEvent.submit(form);
+    expect(vi.mocked(fetch).mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(1);
+    await act(async () => release(response({ data: action, ticket: { ...parent, version: 5 }, replayed: false }, 201)));
+    await waitFor(() => expect(onTicketChange).toHaveBeenCalledTimes(1));
+  });
+
+  it('offers an enabled safe retry after a completed creation loses its response', async () => {
+    const original = vi.mocked(fetch).getMockImplementation()!; let fail = true;
+    vi.mocked(fetch).mockImplementation(async (url, init) => {
+      if (init?.method === 'POST' && fail) throw new TypeError('Lost completion response');
+      return original(url, init);
+    });
+    const actor = userEvent.setup(); mount();
+    await actor.click(await screen.findByRole('button', { name: 'Add Action' }));
+    await actor.type(screen.getByLabelText(/Action Description/), 'Completed creation with lost response');
+    await actor.selectOptions(screen.getByLabelText('Status'), 'COMPLETED');
+    await actor.type(screen.getByLabelText('Result', { exact: false }), 'Verified completed result');
+    await actor.click(screen.getByRole('button', { name: 'Save Action' }));
+    await actor.click(screen.getByRole('button', { name: 'Confirm Completion' }));
+    expect(await screen.findByRole('button', { name: 'Retry Previous Save' })).toBeEnabled();
+    fail = false; await actor.click(screen.getByRole('button', { name: 'Retry Previous Save' }));
+    await waitFor(() => expect(onTicketChange).toHaveBeenCalled());
+    const attempts = vi.mocked(fetch).mock.calls.filter(([, init]) => init?.method === 'POST');
+    expect(attempts).toHaveLength(2); expect(attempts[0][1]?.body).toBe(attempts[1][1]?.body);
+  });
+
 });

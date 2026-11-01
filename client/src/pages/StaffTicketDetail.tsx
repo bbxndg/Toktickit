@@ -139,7 +139,9 @@ export const StaffTicketDetail: React.FC<StaffTicketDetailProps> = ({ ticketId, 
   const [postingComment, setPostingComment] = useState(false);
   const [postingNote, setPostingNote] = useState(false);
   const [commentError, setCommentError] = useState('');
+  const [commentLoadError, setCommentLoadError] = useState('');
   const [noteError, setNoteError] = useState('');
+  const [noteLoadError, setNoteLoadError] = useState('');
 
   // Load ticket details
   const fetchTicket = useCallback(async (quiet = false) => {
@@ -181,19 +183,18 @@ export const StaffTicketDetail: React.FC<StaffTicketDetailProps> = ({ ticketId, 
 
   // Fetch comments
   const fetchComments = useCallback(async () => {
+    setLoadingComments(true);
+    setCommentLoadError('');
     try {
-      setLoadingComments(true);
       const res = await fetch(`${API_BASE}/api/tickets/${ticketId}/comments`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
-      if (res.ok) {
-        const data = await res.json();
-        setComments(Array.isArray(data) ? data : []);
-      } else {
-        setComments([]);
-      }
-    } catch (err) {
-      setComments([]);
+      if (!res.ok) throw new Error('Unable to load public comments.');
+      const data = await res.json();
+      if (!Array.isArray(data)) throw new Error('Unable to load public comments.');
+      setComments(data);
+    } catch {
+      setCommentLoadError('Unable to load public comments. Please retry.');
     } finally {
       setLoadingComments(false);
     }
@@ -201,19 +202,18 @@ export const StaffTicketDetail: React.FC<StaffTicketDetailProps> = ({ ticketId, 
 
   // Fetch internal notes
   const fetchNotes = useCallback(async () => {
+    setLoadingNotes(true);
+    setNoteLoadError('');
     try {
-      setLoadingNotes(true);
       const res = await fetch(`${API_BASE}/api/tickets/${ticketId}/notes`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
-      if (res.ok) {
-        const data = await res.json();
-        setNotes(Array.isArray(data) ? data : []);
-      } else {
-        setNotes([]);
-      }
-    } catch (err) {
-      setNotes([]);
+      if (!res.ok) throw new Error('Unable to load internal notes.');
+      const data = await res.json();
+      if (!Array.isArray(data)) throw new Error('Unable to load internal notes.');
+      setNotes(data);
+    } catch {
+      setNoteLoadError('Unable to load internal notes. Please retry.');
     } finally {
       setLoadingNotes(false);
     }
@@ -582,7 +582,7 @@ export const StaffTicketDetail: React.FC<StaffTicketDetailProps> = ({ ticketId, 
           role="alert"
         >
           <span>{operationMsg.text}</span>
-          <button type="button" className="btn-close btn-sm" onClick={() => setOperationMsg(null)}></button>
+          <button type="button" className="btn-close btn-sm" aria-label="Dismiss notification" onClick={() => setOperationMsg(null)}></button>
         </div>
       )}
 
@@ -599,7 +599,7 @@ export const StaffTicketDetail: React.FC<StaffTicketDetailProps> = ({ ticketId, 
         <div className="row g-3 align-items-center">
           {/* Owner Assignment */}
           <div className="col-12 col-md-4">
-            <label className="form-label small fw-bold text-muted mb-1 d-flex justify-content-between">
+            <label htmlFor="ticket-owner" className="form-label small fw-bold text-muted mb-1 d-flex justify-content-between">
               <span>
                 Ticket Owner{' '}
                 {ticket.owner && ticket.owner.id === user?.id && (
@@ -616,6 +616,7 @@ export const StaffTicketDetail: React.FC<StaffTicketDetailProps> = ({ ticketId, 
             </label>
             <div className="input-group input-group-sm">
               <select
+                id="ticket-owner"
                 className="form-select"
                 value={selectedOwner}
                 onChange={(e) => handleAssignOwner(e.target.value)}
@@ -647,10 +648,11 @@ export const StaffTicketDetail: React.FC<StaffTicketDetailProps> = ({ ticketId, 
 
           {/* IT Priority Selector */}
           <div className="col-6 col-md-4">
-            <label className="form-label small fw-bold text-muted mb-1">
+            <label htmlFor="ticket-priority" className="form-label small fw-bold text-muted mb-1">
               IT Priority <span className="fw-normal text-muted" style={{ fontSize: '0.75rem' }}>(Req: {ticket.requestedPriority})</span>
             </label>
             <select
+              id="ticket-priority"
               className="form-select form-select-sm"
               value={selectedPriority}
               onChange={(e) => handleUpdatePriority(e.target.value)}
@@ -666,10 +668,11 @@ export const StaffTicketDetail: React.FC<StaffTicketDetailProps> = ({ ticketId, 
 
           {/* Status Workflow Transition */}
           <div className="col-6 col-md-4">
-            <label className="form-label small fw-bold text-muted mb-1">
+            <label htmlFor="ticket-status" className="form-label small fw-bold text-muted mb-1">
               Status Transition
             </label>
             <select
+              id="ticket-status"
               className="form-select form-select-sm"
               value={selectedStatus}
               onChange={(e) => handleStatusChangeSelect(e.target.value)}
@@ -867,7 +870,12 @@ export const StaffTicketDetail: React.FC<StaffTicketDetailProps> = ({ ticketId, 
                   </div>
 
                   {loadingComments ? (
-                    <div className="py-3 text-center text-muted small">Loading conversation...</div>
+                    <div role="status" className="py-3 text-center text-muted small">Loading conversation...</div>
+                  ) : commentLoadError ? (
+                    <div role="alert" className="alert alert-danger">
+                      {commentLoadError} {' '}
+                      <button type="button" className="btn btn-zg-secondary btn-sm" onClick={() => void fetchComments()}>Retry public comments</button>
+                    </div>
                   ) : comments.length === 0 ? (
                     <p className="text-muted small py-3 text-center mb-0">No public comments on this ticket yet.</p>
                   ) : (
@@ -954,7 +962,12 @@ export const StaffTicketDetail: React.FC<StaffTicketDetailProps> = ({ ticketId, 
                   </div>
 
                   {loadingNotes ? (
-                    <div className="py-3 text-center text-muted small">Loading internal notes...</div>
+                    <div role="status" className="py-3 text-center text-muted small">Loading internal notes...</div>
+                  ) : noteLoadError ? (
+                    <div role="alert" className="alert alert-danger">
+                      {noteLoadError} {' '}
+                      <button type="button" className="btn btn-zg-secondary btn-sm" onClick={() => void fetchNotes()}>Retry internal notes</button>
+                    </div>
                   ) : notes.length === 0 ? (
                     <p className="text-muted small py-3 text-center mb-0">No internal notes recorded yet.</p>
                   ) : (

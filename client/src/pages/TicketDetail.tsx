@@ -94,6 +94,7 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({ ticketId, onBack }) 
   const [newComment, setNewComment] = useState('');
   const [postingComment, setPostingComment] = useState(false);
   const [commentError, setCommentError] = useState('');
+  const [commentLoadError, setCommentLoadError] = useState('');
 
   // Problem Appears Resolved State
   const [resolveModalOpen, setResolveModalOpen] = useState(false);
@@ -133,23 +134,18 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({ ticketId, onBack }) 
   }, [ticketId, effectiveRequesterId, token]);
 
   const fetchComments = useCallback(async () => {
+    setLoadingComments(true);
+    setCommentLoadError('');
     try {
-      setLoadingComments(true);
-      const headers: Record<string, string> = {};
-      if (token) headers['Authorization'] = `Bearer ${token}`;
-
       const res = await fetch(`${API_BASE}/api/tickets/${ticketId}/comments`, {
-        headers,
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
-
-      if (res.ok) {
-        const data = await res.json();
-        setComments(Array.isArray(data) ? data : []);
-      } else {
-        setComments([]);
-      }
-    } catch (err) {
-      setComments([]);
+      if (!res.ok) throw new Error('Unable to load public comments.');
+      const data = await res.json();
+      if (!Array.isArray(data)) throw new Error('Unable to load public comments.');
+      setComments(data);
+    } catch {
+      setCommentLoadError('Unable to load public comments. Please retry.');
     } finally {
       setLoadingComments(false);
     }
@@ -471,7 +467,7 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({ ticketId, onBack }) 
       {resolveSuccessMsg && (
         <div className="alert alert-success py-2 small mb-3 shadow-sm d-flex justify-content-between align-items-center" role="alert">
           <span>{resolveSuccessMsg}</span>
-          <button type="button" className="btn-close btn-sm" onClick={() => setResolveSuccessMsg('')}></button>
+          <button type="button" className="btn-close btn-sm" aria-label="Dismiss notification" onClick={() => setResolveSuccessMsg('')}></button>
         </div>
       )}
 
@@ -698,8 +694,13 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({ ticketId, onBack }) 
         </div>
 
         {loadingComments ? (
-          <div className="py-3 text-center text-muted small">Loading conversation...</div>
-        ) : !Array.isArray(comments) || comments.length === 0 ? (
+          <div role="status" className="py-3 text-center text-muted small">Loading conversation...</div>
+        ) : commentLoadError ? (
+          <div role="alert" className="alert alert-danger">
+            {commentLoadError} {' '}
+            <button type="button" className="btn btn-zg-secondary btn-sm" onClick={() => void fetchComments()}>Retry public comments</button>
+          </div>
+        ) : comments.length === 0 ? (
           <p className="text-muted small py-2 mb-3">No messages yet. Send a message to IT support below.</p>
         ) : (
           <div className="comment-list mb-3" style={{ maxHeight: '350px', overflowY: 'auto' }}>
@@ -779,24 +780,7 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({ ticketId, onBack }) 
       </>}
       {/* Soft-Removal Confirmation Modal */}
       {removeModalOpen && removalTarget && (
-        <div
-          className="modal show d-block"
-          tabIndex={-1}
-          role="dialog"
-          style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}
-          data-testid="remove-modal"
-        >
-          <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content">
-              <div className="modal-header">
-                <h5 className="modal-title fw-bold text-danger">Remove Attachment</h5>
-                <button
-                  type="button"
-                  className="btn-close"
-                  onClick={closeRemoveModal}
-                  disabled={removing}
-                />
-              </div>
+        <ActionDialog title="Remove Attachment" testId="remove-modal" onClose={() => { if (!removing) closeRemoveModal(); }}>
               <div className="modal-body">
                 <p className="small text-muted mb-2">
                   You are about to remove <strong>{removalTarget.originalName}</strong>. Please provide a reason for removal.
@@ -845,9 +829,7 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({ ticketId, onBack }) 
                   {removing ? 'Removing...' : 'Confirm Removal'}
                 </button>
               </div>
-            </div>
-          </div>
-        </div>
+        </ActionDialog>
       )}
 
       {resolveModalOpen && <ActionDialog title="Confirm Resolution Indication" testId="confirm-resolve-modal" onClose={() => { if (!resolving) setResolveModalOpen(false); }}>

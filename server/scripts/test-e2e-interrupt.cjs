@@ -23,23 +23,42 @@ async function check(signal) {
   const child = spawn(process.execPath, ['scripts/e2e-isolated.cjs', 'dashboard.spec.ts'], {
     cwd: server, env: { ...process.env, NODE_ENV: 'test', E2E_TEST_RUN_ID: id, ...(chrome ? { CHROME_EXECUTABLE_PATH: chrome } : {}) }, stdio: ['ignore', 'pipe', 'pipe'],
   });
-  let output = '', sent = false;
+  let output = '', sent = false, fixtureError;
+  const filename = `interrupt-${id}.pdf`;
+  const fixturePath = path.join(server, 'uploads', 'attachments', filename);
+  const populate = async () => {
+    const owner = await db.user.findUniqueOrThrow({ where: { email: `e2e-requester-${id}@test.local` } });
+    const staff = await db.user.findUniqueOrThrow({ where: { email: `e2e-it_staff-${id}@test.local` } });
+    const category = await db.category.findFirstOrThrow(), system = await db.relatedSystem.findFirstOrThrow();
+    const ticket = await db.ticket.create({ data: { ticketNumber: `INTERRUPT-DYNAMIC-${id}`, summary: 'Dynamic interruption fixture',
+      description: 'Must be cleaned by the runner after a worker stops', requestedPriority: 'LOW', requesterId: owner.id,
+      categoryId: category.id, relatedSystemId: system.id } });
+    await db.actionTaken.create({ data: { ticketId: ticket.id, assigneeId: staff.id, createdById: staff.id, updatedById: staff.id,
+      description: 'Dynamic interruption action', clientRequestId: randomUUID(), requestFingerprint: id } });
+    fs.mkdirSync(path.dirname(fixturePath), { recursive: true }); fs.writeFileSync(fixturePath, '%PDF-1.4 interruption fixture');
+    await db.attachment.create({ data: { ticketId: ticket.id, filename, originalName: filename, mimeType: 'application/pdf', sizeBytes: 29 } });
+    await db.user.create({ data: { name: 'Dynamic interruption user', email: `browser-created-${id}-interrupt@test.local`, passwordHash: 'fixture-only' } });
+  };
   const exit = new Promise((resolve, reject) => {
     const timer = setTimeout(() => { child.kill('SIGKILL'); reject(Error(`${signal}: timed out`)); }, 30000);
     for (const stream of [child.stdout, child.stderr]) stream.on('data', chunk => {
       output += chunk.toString();
-      if (!sent && /Running \d+ tests? using/.test(output)) { sent = true; child.kill(signal); }
+      if (!sent && /Running \d+ tests? using/.test(output)) {
+        sent = true;
+        populate().catch(error => { fixtureError = error; }).finally(() => child.kill(signal));
+      }
     });
     child.once('error', error => { clearTimeout(timer); reject(error); });
     child.once('close', (code, terminatedBy) => { clearTimeout(timer); resolve({ code, terminatedBy }); });
   });
   const result = await exit;
+  if (fixtureError) throw fixtureError;
   if (!sent || result.code !== (signal === 'SIGINT' ? 130 : 143)) throw Error(`${signal}: unexpected runner exit ${JSON.stringify(result)}`);
   const leftovers = await db.user.count({ where: { email: { contains: id } } });
   const tickets = await db.ticket.count({ where: { ticketNumber: { contains: id } } });
-  if (leftovers || tickets) throw Error(`${signal}: fixtures remain`);
+  if (leftovers || tickets || fs.existsSync(fixturePath)) throw Error(`${signal}: fixtures remain`);
   await portFree(4000); await portFree(5173);
-  console.log(`${signal}: runner exited cleanly; its fixtures and ports were released`);
+  console.log(`${signal}: runner exited cleanly; dynamic users, Tickets, actions, upload files and ports were released`);
 }
 (async () => { try { await check('SIGINT'); await check('SIGTERM'); } finally { await db.$disconnect(); } })()
   .catch(error => { console.error(error.message); process.exitCode = 1; });

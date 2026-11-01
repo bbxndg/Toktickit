@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { Prisma, PrismaClient, Role } from '@prisma/client';
 import { authenticate, enforcePasswordChange, requireRole, AuthenticatedRequest } from '../middleware/auth';
 import { ACTION_TRANSITIONS, ACTIVE_TICKETS, actionBody, normalizeAction } from '../utils/actionValidation';
-import { ApiError, checkVersion, integer, invalid, lockTicket, pathId, sendApiError, ticketProjection } from '../utils/ticketWrites';
+import { ApiError, checkVersion, integer, invalid, lockTicket, pathId, paginationQuery, sendApiError, ticketProjection } from '../utils/ticketWrites';
 
 const prisma = new PrismaClient();
 const router = Router();
@@ -12,7 +12,7 @@ export const sharedAction = {
   id: true, ticketId: true, actionAt: true, description: true, result: true, status: true,
   followUpRequired: true, followUpNote: true, attachmentNotes: true, cancelReason: true,
   completedAt: true, cancelledAt: true, version: true, createdAt: true, updatedAt: true,
-  assignee: { select: userSummary }, createdBy: { select: userSummary }, updatedBy: { select: userSummary }, performedBy: { select: userSummary },
+  assignee: { select: { ...userSummary, isActive: true } }, createdBy: { select: userSummary }, updatedBy: { select: userSummary }, performedBy: { select: userSummary },
 } satisfies Prisma.ActionTakenSelect;
 const protectedRead = [authenticate, enforcePasswordChange];
 const protectedWrite = [authenticate, enforcePasswordChange, requireRole(Role.IT_STAFF, Role.ADMINISTRATOR)];
@@ -20,15 +20,13 @@ const protectedWrite = [authenticate, enforcePasswordChange, requireRole(Role.IT
 router.get('/tickets/:id/actions-taken', ...protectedRead, async (req: AuthenticatedRequest, res) => {
   try {
     const id = pathId(req.params.id);
-    const queryNumber = (field: string, fallback: number) => req.query[field] === undefined ? fallback : pathId(req.query[field], field);
-    const page = queryNumber('page', 1), pageSize = queryNumber('pageSize', 20);
-    if (pageSize > 50 || !Number.isSafeInteger((page - 1) * pageSize)) invalid('pageSize', 'Use a page size from 1 to 50 and a valid page.');
+    const { page, pageSize, skip } = paginationQuery(req.query);
     const result = await prisma.$transaction(async tx => {
       const ticket = await tx.ticket.findUnique({ where: { id } });
       if (!ticket || (req.user!.role === Role.REQUESTER && ticket.requesterId !== req.user!.id)) throw new ApiError(404, 'NOT_FOUND', 'Ticket not found.');
       const totalItems = await tx.actionTaken.count({ where: { ticketId: id } });
-      const data = await tx.actionTaken.findMany({ where: { ticketId: id }, select: sharedAction,
-        orderBy: [{ actionAt: 'asc' }, { id: 'asc' }], skip: (page - 1) * pageSize, take: pageSize });
+      const data = skip >= totalItems ? [] : await tx.actionTaken.findMany({ where: { ticketId: id }, select: sharedAction,
+        orderBy: [{ actionAt: 'asc' }, { id: 'asc' }], skip, take: pageSize });
       return { data, ticket: ticketProjection(ticket), pagination: { page, pageSize, totalItems, totalPages: Math.max(1, Math.ceil(totalItems / pageSize)) } };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
     return res.json(result);
